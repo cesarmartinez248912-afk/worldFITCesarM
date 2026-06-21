@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Save, Sparkles, Trash2 } from "lucide-react";
+import { CalendarDays, Dumbbell, Play, Plus, Save, Sparkles, TimerReset, Trash2 } from "lucide-react";
 import { MobileShell } from "@/components/mobile-shell";
 import { Button, Card, Field, SelectField } from "@/components/ui";
 import { ModalTopBar } from "@/components/top-bar";
@@ -15,6 +15,14 @@ import { formatKg, formatVolume } from "@/utils/format";
 const muscleGroups: MuscleGroup[] = ["Pecho", "Espalda", "Pierna", "Hombros", "Bíceps", "Tríceps", "Core", "Cardio", "Full Body", "Otro"];
 
 type DraftEntry = WorkoutEntry & { order: number };
+
+type RoutineDayPreview = {
+  label: string;
+  exercises: number;
+  sets: number;
+  restSeconds: number;
+  items: { exerciseName: string; reps: number; sets: number; restSeconds?: number }[];
+};
 
 function getRoutineDays(routine?: { items: { dayLabel: string; order: number }[] }) {
   return [...new Set(routine?.items.slice().sort((a, b) => a.order - b.order).map((item) => item.dayLabel) ?? [])];
@@ -47,6 +55,23 @@ function buildDraftEntry(entry: {
     restSeconds: entry.restSeconds ?? 60,
     notes: entry.notes,
     order,
+  };
+}
+
+function formatSeconds(seconds: number) {
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return rest ? `${minutes}m ${rest}s` : `${minutes}m`;
+}
+
+function summarizeRoutineDay(label: string, items: { exerciseName: string; reps: number; sets: number; restSeconds?: number }[]): RoutineDayPreview {
+  return {
+    label,
+    exercises: items.length,
+    sets: items.reduce((sum, item) => sum + item.sets, 0),
+    restSeconds: items.reduce((sum, item) => sum + (item.restSeconds ?? 60), 0),
+    items,
   };
 }
 
@@ -106,6 +131,15 @@ export default function RegisterPage() {
     return selectedRoutine.items.filter((item) => item.dayLabel === selectedDay).sort((a, b) => a.order - b.order);
   }, [selectedRoutine, selectedDay]);
 
+  const routinePreview = useMemo<RoutineDayPreview[]>(() => {
+    if (!selectedRoutine) return [];
+    const days = routineDays.length ? routineDays : [...new Set(selectedRoutine.items.map((item) => item.dayLabel))];
+    return days.map((day) => {
+      const items = selectedRoutine.items.filter((item) => item.dayLabel === day).sort((a, b) => a.order - b.order);
+      return summarizeRoutineDay(day, items);
+    });
+  }, [routineDays, selectedRoutine]);
+
   const currentExercise = pendingEntries[activeIndex] ?? null;
   const hasWorkoutStarted = pendingEntries.length > 0;
 
@@ -138,10 +172,6 @@ export default function RegisterPage() {
     setActiveIndex(0);
     setWeightPromptOpen(false);
     setWeightInput("");
-
-    if (next.length) {
-      setWeightInput("");
-    }
   };
 
   const addLine = () => {
@@ -220,6 +250,8 @@ export default function RegisterPage() {
 
   const previous = previousSessionWithSameRoutine(draftSession, state.sessions);
   const compare = compareSessions(draftSession, previous);
+  const totalCompletedVolume = completedEntries.reduce((a, e) => a + e.weight * e.reps * e.sets, 0);
+  const estimatedRest = routineEntries.length ? routineEntries.reduce((sum, item) => sum + (item.restSeconds ?? 60), 0) : selectedRoutine?.items.reduce((sum, item) => sum + (item.restSeconds ?? 60), 0) ?? 0;
 
   const saveSession = () => {
     if (!completedEntries.length) return;
@@ -229,40 +261,153 @@ export default function RegisterPage() {
 
   return (
     <MobileShell showNav={false} active="/register">
-      <ModalTopBar title="Registrar" closeLabel="Volver" />
+      <ModalTopBar title="Iniciar rutina" closeLabel="Volver" />
       <div className="flex-1 overflow-y-auto px-5 pb-8 pt-4 scrollbar-hide">
-        <Card className="p-4">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Selecciona una rutina</div>
-          <div className="mt-3 grid gap-3">
-            <SelectField label="Rutina" value={selectedRoutineId} onChange={(e) => setSelectedRoutineId(e.target.value)}>
-              {state.routines.length ? state.routines.map((routine) => (
-                <option key={routine.id} value={routine.id}>{routine.name}</option>
-              )) : <option value="">No hay rutinas creadas</option>}
-            </SelectField>
-            <SelectField label="Día sugerido" value={selectedDay} onChange={(e) => setSelectedDay(e.target.value)}>
-              <option value="Manual">Manual</option>
-              {routineDays.map((day) => <option key={day} value={day}>{day}</option>)}
-            </SelectField>
-            <Field label="Título" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ej. Pierna pesada" />
-            <Field label="Fecha y hora" type="datetime-local" value={startedAt} onChange={(e) => setStartedAt(e.target.value)} />
+        <Card className="overflow-hidden border border-border/70 bg-gradient-to-br from-surface via-surface to-[rgba(255,179,181,0.08)] p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Pantalla de inicio</div>
+              <h1 className="mt-1 text-2xl font-black tracking-tight">{selectedRoutine?.name ?? "Selecciona una rutina"}</h1>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {selectedRoutine?.description ?? "Elige una rutina para verla de forma clara y empezar ejercicio por ejercicio."}
+              </p>
+            </div>
+            <div className="rounded-full border border-border bg-surface-2 p-3 text-primary">
+              <Dumbbell className="h-5 w-5" />
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold text-muted-foreground">
+            <span className="rounded-full border border-border bg-surface-2 px-3 py-1">{selectedRoutine?.items.length ?? 0} ejercicios</span>
+            <span className="rounded-full border border-border bg-surface-2 px-3 py-1">{routineDays.length || 0} días</span>
+            <span className="rounded-full border border-border bg-surface-2 px-3 py-1">Descanso total: {formatSeconds(estimatedRest)}</span>
+            {selectedDay && selectedDay !== "Manual" ? <span className="rounded-full border border-border bg-surface-2 px-3 py-1">Día: {selectedDay}</span> : null}
+          </div>
+
+          <div className="mt-4 flex gap-3">
+            <Button className="flex-1 gap-2" onClick={importRoutine} disabled={!selectedRoutine || !!restTimer}>
+              <Play className="h-4 w-4" />
+              Iniciar rutina
+            </Button>
+            <Button
+              variant="secondary"
+              className="gap-2"
+              onClick={() => {
+                setSelectedDay("Manual");
+                setPendingEntries([]);
+                setCompletedEntries([]);
+                setActiveIndex(0);
+              }}
+            >
+              <TimerReset className="h-4 w-4" />
+              Limpiar
+            </Button>
           </div>
         </Card>
 
         <Card className="mt-4 p-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Importación rápida</div>
-              <div className="mt-1 text-sm text-muted-foreground">Carga la plantilla y ve avanzando ejercicio por ejercicio.</div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Selecciona la semana</div>
+              <div className="mt-1 text-sm text-muted-foreground">Toca un día para ver solo esa parte de la rutina.</div>
             </div>
-            <Button variant="secondary" className="gap-2" onClick={importRoutine} disabled={!selectedRoutine}>
-              <Sparkles className="h-4 w-4" />
-              Cargar rutina
-            </Button>
+            <div className="rounded-full border border-border bg-surface-2 p-2 text-primary">
+              <CalendarDays className="h-4 w-4" />
+            </div>
           </div>
-          <div className="mt-4 rounded-2xl border border-border bg-surface-2 p-3 text-sm text-muted-foreground">
-            {routineEntries.length ? `${routineEntries.length} ejercicios listos para hoy.` : selectedRoutine ? "No hay día seleccionado o la rutina está vacía." : "Crea una rutina para poder cargarla aquí."}
+
+          <div className="mt-4 grid gap-3">
+            <SelectField label="Rutina" value={selectedRoutineId} onChange={(e) => setSelectedRoutineId(e.target.value)}>
+              {state.routines.length ? state.routines.map((routine) => (
+                <option key={routine.id} value={routine.id}>{routine.name}</option>
+              )) : <option value="">No hay rutinas creadas</option>}
+            </SelectField>
+          </div>
+
+          <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
+            <button
+              type="button"
+              onClick={() => setSelectedDay("Manual")}
+              className={`shrink-0 rounded-full border px-4 py-2 text-sm font-semibold transition ${selectedDay === "Manual" ? "border-primary bg-[rgba(255,179,181,0.16)] text-foreground" : "border-border bg-surface-2 text-muted-foreground"}`}
+            >
+              Manual
+            </button>
+            {routinePreview.map((day) => {
+              const isActive = selectedDay === day.label;
+              return (
+                <button
+                  key={day.label}
+                  type="button"
+                  onClick={() => setSelectedDay(day.label)}
+                  className={`min-w-[170px] shrink-0 rounded-[1.25rem] border p-3 text-left transition ${isActive ? "border-primary bg-[rgba(255,179,181,0.12)]" : "border-border bg-surface-2"}`}
+                >
+                  <div className="text-sm font-semibold">{day.label}</div>
+                  <div className="mt-1 text-xs text-muted-foreground">{day.exercises} ejercicios · {day.sets} series</div>
+                  <div className="mt-2 text-[11px] text-muted-foreground">
+                    {day.items.slice(0, 2).map((item) => item.exerciseName).join(" · ")}
+                    {day.items.length > 2 ? " · ..." : ""}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-border bg-surface-2 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Vista rápida</div>
+                <div className="mt-1 text-sm text-muted-foreground">{routineEntries.length ? `${routineEntries.length} ejercicios listos para hoy.` : selectedRoutine ? "Mira el plan completo de la rutina sin tanta información." : "Crea una rutina para verla aquí."}</div>
+              </div>
+              <div className="text-right text-xs text-muted-foreground">
+                <div className="font-semibold text-foreground">{selectedRoutine?.name ?? "Sin rutina"}</div>
+                <div>{selectedDay === "Manual" ? "Modo manual" : selectedDay}</div>
+              </div>
+            </div>
           </div>
         </Card>
+
+        {selectedRoutine ? (
+          <Card className="mt-4 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Plan visual</div>
+                <div className="mt-1 text-lg font-bold">{selectedDay === "Manual" ? "Rutina completa" : selectedDay}</div>
+              </div>
+              <div className="text-right text-xs text-muted-foreground">
+                <div>{selectedRoutine.items.length} ejercicios</div>
+                <div>{routineDays.length || 0} bloques</div>
+              </div>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {(selectedDay === "Manual" ? routinePreview : routinePreview.filter((day) => day.label === selectedDay)).map((day) => (
+                <div key={day.label} className="rounded-[1.35rem] border border-border bg-surface-2 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold">{day.label}</div>
+                      <div className="text-xs text-muted-foreground">{day.exercises} ejercicios · {day.sets} series</div>
+                    </div>
+                    <div className="rounded-full border border-border bg-surface px-3 py-1 text-[11px] font-semibold text-muted-foreground">
+                      {formatSeconds(day.restSeconds)} descanso total
+                    </div>
+                  </div>
+                  <div className="mt-3 grid gap-2">
+                    {day.items.map((item, index) => (
+                      <div key={`${day.label}-${index}-${item.exerciseName}`} className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-surface px-3 py-2 text-sm">
+                        <div className="min-w-0">
+                          <div className="truncate font-semibold">{item.exerciseName}</div>
+                          <div className="text-xs text-muted-foreground">{item.reps} reps · {item.sets} series</div>
+                        </div>
+                        <div className="text-xs text-muted-foreground">{formatSeconds(item.restSeconds ?? 60)}</div>
+                      </div>
+                    ))}
+                    {!day.items.length ? <div className="rounded-2xl border border-dashed border-border p-3 text-sm text-muted-foreground">No hay ejercicios en este bloque.</div> : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        ) : null}
 
         <Card className="mt-4 p-4">
           <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Agregar ejercicio manual</div>
@@ -286,9 +431,9 @@ export default function RegisterPage() {
         </Card>
 
         <Card className="mt-4 p-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3">
             <div>
-              <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Ejercicio actual</div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Sesión actual</div>
               <div className="mt-1 text-lg font-bold">
                 {currentExercise ? `${activeIndex + 1} / ${pendingEntries.length}` : "Sin ejercicios cargados"}
               </div>
@@ -299,16 +444,18 @@ export default function RegisterPage() {
           </div>
 
           {currentExercise ? (
-            <div className="mt-4 rounded-2xl border border-border bg-surface-2 p-4">
-              <div className="text-sm font-semibold">{currentExercise.exerciseName}</div>
-              <div className="mt-1 text-xs text-muted-foreground">{currentExercise.muscleGroup} · {currentExercise.reps} reps · {currentExercise.sets} series · Descanso {currentExercise.restSeconds ?? 60}s</div>
+            <div className="mt-4 rounded-[1.35rem] border border-border bg-surface-2 p-4">
+              <div className="text-lg font-bold">{currentExercise.exerciseName}</div>
+              <div className="mt-1 text-sm text-muted-foreground">
+                {currentExercise.muscleGroup} · {currentExercise.reps} reps · {currentExercise.sets} series · Descanso {currentExercise.restSeconds ?? 60}s
+              </div>
               <Button className="mt-4 w-full gap-2" onClick={openFinishPrompt} disabled={!!restTimer}>
                 Finalizar ejercicio
               </Button>
             </div>
           ) : (
             <div className="mt-4 rounded-2xl border border-dashed border-border bg-surface-2 p-4 text-sm text-muted-foreground">
-              Carga una rutina o agrega ejercicios manuales para empezar.
+              Pulsa “Iniciar rutina” para cargar el plan o agrega ejercicios manuales para empezar.
             </div>
           )}
 
@@ -327,7 +474,7 @@ export default function RegisterPage() {
           </div>
 
           <div className="mt-4 rounded-2xl border border-border bg-surface-2 p-3 text-sm text-muted-foreground">
-            {completedEntries.length ? `Volumen estimado: ${formatVolume(completedEntries.reduce((a, e) => a + e.weight * e.reps * e.sets, 0), state.settings.units)}` : "Todavía no has finalizado ejercicios."}
+            {completedEntries.length ? `Volumen estimado: ${formatVolume(totalCompletedVolume, state.settings.units)}` : "Todavía no has finalizado ejercicios."}
           </div>
 
           <div className="mt-4 rounded-2xl border border-border bg-surface-2 p-3 text-xs text-muted-foreground">

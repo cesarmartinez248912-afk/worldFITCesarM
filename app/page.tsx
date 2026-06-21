@@ -87,8 +87,8 @@ export default function DashboardPage() {
           <div className="mt-4 grid grid-cols-2 gap-3">
             <Link href="/register" className="rounded-2xl border border-[rgba(255,179,181,0.30)] bg-[rgba(255,179,181,0.10)] p-4 shadow-soft">
               <Dumbbell className="h-5 w-5 text-primary" />
-              <div className="mt-3 text-sm font-semibold">Registrar</div>
-              <div className="mt-1 text-xs text-muted-foreground">Empieza un entrenamiento</div>
+              <div className="mt-3 text-sm font-semibold">Iniciar rutina</div>
+              <div className="mt-1 text-xs text-muted-foreground">Abre tu pantalla visual de rutina</div>
             </Link>
             <Link href="/history" className="rounded-2xl border border-border bg-surface-2 p-4">
               <History className="h-5 w-5 text-secondary" />
