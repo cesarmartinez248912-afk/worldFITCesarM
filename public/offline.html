@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#121317" />
+    <title>Pure Lift Offline</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #121317;
+        --card: #1a1b1f;
+        --text: #e3e2e7;
+        --muted: #ad8888;
+        --accent: #ffb3b5;
+      }
+      html, body { height: 100%; margin: 0; }
+      body {
+        display: grid;
+        place-items: center;
+        background: radial-gradient(circle at top, rgba(255,179,181,.12), transparent 35%), var(--bg);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      .card {
+        width: min(360px, calc(100vw - 32px));
+        background: var(--card);
+        border: 1px solid rgba(255,255,255,.06);
+        border-radius: 24px;
+        padding: 28px;
+        box-shadow: 0 16px 48px rgba(0,0,0,.35);
+        text-align: center;
+      }
+      .logo {
+        width: 88px; height: 88px; border-radius: 28px; margin: 0 auto 18px;
+        background: linear-gradient(180deg, rgba(255,179,181,.14), rgba(255,179,181,.04));
+        border: 1px solid rgba(255,179,181,.2);
+        display: grid; place-items: center;
+      }
+      .bar { width: 40px; height: 8px; border-radius: 999px; background: var(--accent); position: relative; }
+      .bar:before, .bar:after {
+        content:""; position:absolute; top:50%; transform:translateY(-50%);
+        width: 12px; height: 22px; border-radius: 999px; background: #adc6ff;
+      }
+      .bar:before { left:-18px; }
+      .bar:after { right:-18px; }
+      h1 { margin: 0 0 8px; font-size: 24px; }
+      p { margin: 0; color: var(--muted); line-height: 1.5; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="logo"><div class="bar"></div></div>
+      <h1>Sin conexión</h1>
+      <p>Pure Lift sigue disponible cuando Safari vuelva a cargar la app instalada.</p>
+    </div>
+  </body>
+</html>
