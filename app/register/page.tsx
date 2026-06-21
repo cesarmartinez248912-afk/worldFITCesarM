@@ -2,17 +2,19 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Save, Trash2, Sparkles } from "lucide-react";
+import { Plus, Save, Sparkles, Trash2 } from "lucide-react";
 import { MobileShell } from "@/components/mobile-shell";
 import { Button, Card, Field, SelectField } from "@/components/ui";
 import { ModalTopBar } from "@/components/top-bar";
 import { useAppStore } from "@/hooks/use-app-store";
 import { createId } from "@/utils/id";
 import type { MuscleGroup, WorkoutEntry, WorkoutSession } from "@/types";
-import { compareSessions, previousSessionWithSameRoutine, sessionReps, sortSessionsNewestFirst } from "@/utils/analytics";
+import { compareSessions, previousSessionWithSameRoutine, sortSessionsNewestFirst } from "@/utils/analytics";
 import { formatKg, formatVolume } from "@/utils/format";
 
 const muscleGroups: MuscleGroup[] = ["Pecho", "Espalda", "Pierna", "Hombros", "Bíceps", "Tríceps", "Core", "Cardio", "Full Body", "Otro"];
+
+type DraftEntry = WorkoutEntry & { order: number };
 
 function getRoutineDays(routine?: { items: { dayLabel: string; order: number }[] }) {
   return [...new Set(routine?.items.slice().sort((a, b) => a.order - b.order).map((item) => item.dayLabel) ?? [])];
@@ -26,6 +28,27 @@ function nextRoutineDay(days: string[], lastDay?: string) {
   return days[(index + 1) % days.length];
 }
 
+function buildDraftEntry(entry: {
+  exerciseName: string;
+  muscleGroup: MuscleGroup;
+  weight: number;
+  reps: number;
+  sets: number;
+  notes?: string;
+}, order: number): DraftEntry {
+  return {
+    id: createId("entry"),
+    exerciseId: createId("ex"),
+    exerciseName: entry.exerciseName,
+    muscleGroup: entry.muscleGroup,
+    weight: entry.weight,
+    reps: entry.reps,
+    sets: entry.sets,
+    notes: entry.notes,
+    order,
+  };
+}
+
 export default function RegisterPage() {
   const router = useRouter();
   const { state, addSession, updateSettings } = useAppStore();
@@ -36,6 +59,7 @@ export default function RegisterPage() {
     () => sortSessionsNewestFirst(state.sessions).find((session) => session.routineId && session.routineId === selectedRoutine?.id),
     [selectedRoutine?.id, state.sessions]
   );
+
   const [selectedDay, setSelectedDay] = useState("Manual");
   const [title, setTitle] = useState(selectedRoutine ? `${selectedRoutine.name}` : "Entrenamiento libre");
   const [notes, setNotes] = useState("");
@@ -45,7 +69,11 @@ export default function RegisterPage() {
   const [weight, setWeight] = useState(0);
   const [reps, setReps] = useState(8);
   const [sets, setSets] = useState(3);
-  const [entries, setEntries] = useState<WorkoutEntry[]>([]);
+  const [pendingEntries, setPendingEntries] = useState<DraftEntry[]>([]);
+  const [completedEntries, setCompletedEntries] = useState<WorkoutEntry[]>([]);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [weightPromptOpen, setWeightPromptOpen] = useState(false);
+  const [weightInput, setWeightInput] = useState("");
 
   useEffect(() => {
     if (!selectedRoutine) return;
@@ -76,32 +104,80 @@ export default function RegisterPage() {
     return selectedRoutine.items.filter((item) => item.dayLabel === selectedDay).sort((a, b) => a.order - b.order);
   }, [selectedRoutine, selectedDay]);
 
+  const currentExercise = pendingEntries[activeIndex] ?? null;
+  const hasWorkoutStarted = pendingEntries.length > 0;
+
+  const resetWorkout = () => {
+    setPendingEntries([]);
+    setCompletedEntries([]);
+    setActiveIndex(0);
+    setWeightPromptOpen(false);
+    setWeightInput("");
+  };
+
   const importRoutine = () => {
     if (!selectedRoutine) return;
     const source = routineEntries.length ? routineEntries : selectedRoutine.items;
-    setEntries(
-      source.map((item) => ({
-        id: createId("entry"),
-        exerciseId: createId("ex"),
-        exerciseName: item.exerciseName,
-        muscleGroup: item.muscleGroup,
-        weight: item.weight,
-        reps: item.reps,
-        sets: item.sets,
-        notes: item.notes,
-      }))
+    const next = source.map((item, index) =>
+      buildDraftEntry(
+        {
+          exerciseName: item.exerciseName,
+          muscleGroup: item.muscleGroup,
+          weight: item.weight,
+          reps: item.reps,
+          sets: item.sets,
+          notes: item.notes,
+        },
+        index + 1
+      )
     );
+    setPendingEntries(next);
+    setCompletedEntries([]);
+    setActiveIndex(0);
+    setWeightPromptOpen(false);
+    setWeightInput("");
+
+    if (next.length) {
+      setWeightInput(String(next[0].weight || ""));
+    }
   };
 
   const addLine = () => {
     const name = exerciseName.trim();
     if (!name) return;
-    setEntries((current) => [
-      { id: createId("entry"), exerciseId: createId("ex"), exerciseName: name, muscleGroup, weight, reps, sets },
-      ...current
+    setPendingEntries((current) => [
+      ...current,
+      buildDraftEntry({ exerciseName: name, muscleGroup, weight, reps, sets }, current.length + 1)
     ]);
     setExerciseName("");
     setWeight(0);
+    if (!hasWorkoutStarted) {
+      setActiveIndex(0);
+      setWeightInput(String(weight || ""));
+    }
+  };
+
+  useEffect(() => {
+    if (currentExercise) {
+      setWeightInput(String(currentExercise.weight || ""));
+    }
+  }, [currentExercise?.id]);
+
+  const openFinishPrompt = () => {
+    if (!currentExercise) return;
+    setWeightInput(String(currentExercise.weight || ""));
+    setWeightPromptOpen(true);
+  };
+
+  const confirmFinishExercise = () => {
+    if (!currentExercise) return;
+    const kg = Number(weightInput);
+    if (!Number.isFinite(kg) || kg < 0) return;
+    const finished = { ...currentExercise, weight: kg };
+    setCompletedEntries((current) => [...current, finished]);
+    setWeightPromptOpen(false);
+    setWeightInput("");
+    setActiveIndex((current) => current + 1);
   };
 
   const draftSession: WorkoutSession = {
@@ -109,9 +185,9 @@ export default function RegisterPage() {
     title,
     startedAt: new Date(startedAt).toISOString(),
     completedAt: new Date().toISOString(),
-    durationMinutes: Math.max(20, Math.round(entries.length * 8 + 20)),
+    durationMinutes: Math.max(20, Math.round(completedEntries.length * 8 + 20)),
     notes,
-    entries,
+    entries: completedEntries,
     routineId: selectedRoutine?.id,
     routineName: selectedRoutine?.name,
     routineDay: selectedDay,
@@ -121,7 +197,7 @@ export default function RegisterPage() {
   const compare = compareSessions(draftSession, previous);
 
   const saveSession = () => {
-    if (!entries.length) return;
+    if (!completedEntries.length) return;
     addSession(draftSession);
     router.push("/history");
   };
@@ -148,23 +224,23 @@ export default function RegisterPage() {
         </Card>
 
         <Card className="mt-4 p-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3">
             <div>
               <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Importación rápida</div>
-              <div className="mt-1 text-sm text-muted-foreground">Carga la plantilla del día elegido y luego ajusta lo que necesites.</div>
+              <div className="mt-1 text-sm text-muted-foreground">Carga la plantilla y ve avanzando ejercicio por ejercicio.</div>
             </div>
-            <Button variant="secondary" className="gap-2" onClick={importRoutine}>
+            <Button variant="secondary" className="gap-2" onClick={importRoutine} disabled={!selectedRoutine}>
               <Sparkles className="h-4 w-4" />
-              Importar
+              Cargar rutina
             </Button>
           </div>
           <div className="mt-4 rounded-2xl border border-border bg-surface-2 p-3 text-sm text-muted-foreground">
-            {routineEntries.length ? `${routineEntries.length} ejercicios listos para hoy.` : selectedRoutine ? "No hay día seleccionado o la rutina está vacía." : "Crea una rutina para poder importarla aquí."}
+            {routineEntries.length ? `${routineEntries.length} ejercicios listos para hoy.` : selectedRoutine ? "No hay día seleccionado o la rutina está vacía." : "Crea una rutina para poder cargarla aquí."}
           </div>
         </Card>
 
         <Card className="mt-4 p-4">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Agregar serie manual</div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Agregar ejercicio manual</div>
           <div className="mt-3 grid gap-3">
             <div className="grid grid-cols-2 gap-3">
               <SelectField label="Grupo muscular" value={muscleGroup} onChange={(e) => setMuscleGroup(e.target.value as MuscleGroup)}>
@@ -181,7 +257,7 @@ export default function RegisterPage() {
             </div>
             <Button variant="secondary" onClick={addLine} className="gap-2">
               <Plus className="h-4 w-4" />
-              Añadir serie
+              Añadir a la sesión
             </Button>
           </div>
         </Card>
@@ -189,19 +265,38 @@ export default function RegisterPage() {
         <Card className="mt-4 p-4">
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Sesión</div>
-              <div className="mt-1 text-lg font-bold">{entries.length} series agregadas</div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Ejercicio actual</div>
+              <div className="mt-1 text-lg font-bold">
+                {currentExercise ? `${activeIndex + 1} / ${pendingEntries.length}` : "Sin ejercicios cargados"}
+              </div>
             </div>
-            <button onClick={() => setEntries([])} className="rounded-full border border-border bg-surface-2 p-2 text-muted-foreground">
+            <button onClick={resetWorkout} className="rounded-full border border-border bg-surface-2 p-2 text-muted-foreground" type="button" aria-label="Vaciar sesión">
               <Trash2 className="h-4 w-4" />
             </button>
           </div>
 
+          {currentExercise ? (
+            <div className="mt-4 rounded-2xl border border-border bg-surface-2 p-4">
+              <div className="text-sm font-semibold">{currentExercise.exerciseName}</div>
+              <div className="mt-1 text-xs text-muted-foreground">{currentExercise.muscleGroup} · {currentExercise.reps} reps · {currentExercise.sets} series</div>
+              <div className="mt-3 text-sm text-muted-foreground">
+                Peso sugerido: {formatKg(currentExercise.weight, state.settings.units)}
+              </div>
+              <Button className="mt-4 w-full gap-2" onClick={openFinishPrompt}>
+                Finalizar ejercicio
+              </Button>
+            </div>
+          ) : (
+            <div className="mt-4 rounded-2xl border border-dashed border-border bg-surface-2 p-4 text-sm text-muted-foreground">
+              Carga una rutina o agrega ejercicios manuales para empezar.
+            </div>
+          )}
+
           <div className="mt-4 space-y-2">
-            {entries.map((entry) => (
+            {completedEntries.map((entry, index) => (
               <div key={entry.id} className="flex items-center justify-between rounded-2xl bg-surface-2 px-4 py-3 text-sm">
                 <div>
-                  <div className="font-semibold">{entry.exerciseName}</div>
+                  <div className="font-semibold">{index + 1}. {entry.exerciseName}</div>
                   <div className="text-xs text-muted-foreground">{entry.muscleGroup}</div>
                 </div>
                 <div className="text-right text-muted-foreground">
@@ -212,7 +307,7 @@ export default function RegisterPage() {
           </div>
 
           <div className="mt-4 rounded-2xl border border-border bg-surface-2 p-3 text-sm text-muted-foreground">
-            {entries.length ? `Volumen estimado: ${formatVolume(entries.reduce((a, e) => a + e.weight * e.reps * e.sets, 0), state.settings.units)}` : "Todavía no agregas series."}
+            {completedEntries.length ? `Volumen estimado: ${formatVolume(completedEntries.reduce((a, e) => a + e.weight * e.reps * e.sets, 0), state.settings.units)}` : "Todavía no has finalizado ejercicios."}
           </div>
 
           <div className="mt-4 rounded-2xl border border-border bg-surface-2 p-3 text-xs text-muted-foreground">
@@ -220,11 +315,44 @@ export default function RegisterPage() {
           </div>
         </Card>
 
-        <Button className="mt-4 w-full gap-2" onClick={saveSession} disabled={!entries.length}>
+        <Button className="mt-4 w-full gap-2" onClick={saveSession} disabled={!completedEntries.length}>
           <Save className="h-4 w-4" />
           Guardar entrenamiento
         </Button>
       </div>
+
+      {weightPromptOpen && currentExercise ? (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/70 px-4 pb-4 pt-20 backdrop-blur-sm">
+          <div className="mx-auto w-full max-w-[430px] rounded-3xl border border-border bg-background p-4 shadow-2xl">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Finalizar ejercicio</div>
+            <div className="mt-1 text-xl font-bold">{currentExercise.exerciseName}</div>
+            <div className="mt-1 text-sm text-muted-foreground">Escribe los kilogramos que levantaste para guardar este ejercicio y pasar al siguiente.</div>
+            <Field
+              className="mt-4"
+              label={`Peso real (${state.settings.units})`}
+              type="number"
+              value={weightInput}
+              onChange={(e) => setWeightInput(e.target.value)}
+              placeholder="0"
+            />
+            <div className="mt-4 flex gap-3">
+              <Button
+                variant="secondary"
+                className="flex-1"
+                onClick={() => {
+                  setWeightPromptOpen(false);
+                  setWeightInput(String(currentExercise.weight || ""));
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button className="flex-1" onClick={confirmFinishExercise}>
+                Guardar y seguir
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </MobileShell>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Check, Copy, Plus, Save, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Check, Copy, Download, Plus, Save, Trash2, Upload } from "lucide-react";
 import { MobileShell, TopAccent } from "@/components/mobile-shell";
 import { Button, Card, Field, SelectField } from "@/components/ui";
 import { useAppStore } from "@/hooks/use-app-store";
@@ -9,6 +9,7 @@ import { createId } from "@/utils/id";
 import type { MuscleGroup, RoutineItem, RoutineTemplate } from "@/types";
 
 const groups: MuscleGroup[] = ["Pecho", "Espalda", "Pierna", "Hombros", "Bíceps", "Tríceps", "Core", "Cardio", "Full Body", "Otro"];
+const validGroups = new Set<MuscleGroup>(groups);
 
 function emptyRoutine(): RoutineTemplate {
   const now = new Date().toISOString();
@@ -31,6 +32,75 @@ function groupDays(items: RoutineItem[]) {
   return [...map.entries()];
 }
 
+function downloadFile(filename: string, content: string, type = "application/json") {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function normalizeImportedRoutine(input: unknown): RoutineTemplate | null {
+  if (!input || typeof input !== "object") return null;
+  const raw = input as Partial<RoutineTemplate> & { items?: unknown };
+
+  const items = Array.isArray(raw.items) ? raw.items : [];
+  const normalizedItems = items
+    .map((item, index) => {
+      if (!item || typeof item !== "object") return null;
+      const row = item as Partial<RoutineItem>;
+      const exerciseName = typeof row.exerciseName === "string" ? row.exerciseName.trim() : "";
+      const dayLabel = typeof row.dayLabel === "string" ? row.dayLabel.trim() : "Día 1";
+      const muscleGroup = typeof row.muscleGroup === "string" && validGroups.has(row.muscleGroup as MuscleGroup)
+        ? (row.muscleGroup as MuscleGroup)
+        : "Otro";
+      if (!exerciseName) return null;
+
+      return {
+        id: createId("ri"),
+        dayLabel,
+        exerciseName,
+        muscleGroup,
+        weight: Number.isFinite(Number(row.weight)) ? Number(row.weight) : 0,
+        reps: Number.isFinite(Number(row.reps)) ? Number(row.reps) : 8,
+        sets: Number.isFinite(Number(row.sets)) ? Number(row.sets) : 3,
+        order: Number.isFinite(Number(row.order)) ? Number(row.order) : index + 1,
+        notes: typeof row.notes === "string" && row.notes.trim() ? row.notes.trim() : undefined,
+      } satisfies RoutineItem;
+    })
+    .filter((item): item is RoutineItem => Boolean(item))
+    .sort((a, b) => a.order - b.order);
+
+  if (!normalizedItems.length) return null;
+
+  const name = typeof raw.name === "string" && raw.name.trim() ? raw.name.trim() : "Rutina importada";
+  const description = typeof raw.description === "string" && raw.description.trim() ? raw.description.trim() : "Rutina importada desde archivo";
+
+  return {
+    id: createId("rt"),
+    name,
+    description,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    items: normalizedItems,
+  };
+}
+
+function normalizePayload(payload: unknown): RoutineTemplate[] {
+  if (!payload || typeof payload !== "object") return [];
+  const raw = payload as any;
+  if (Array.isArray(raw.routines)) {
+    return raw.routines.map((routine: unknown) => normalizeImportedRoutine(routine)).filter((routine): routine is RoutineTemplate => Boolean(routine));
+  }
+  if (Array.isArray(raw.items)) {
+    const routine = normalizeImportedRoutine(raw);
+    return routine ? [routine] : [];
+  }
+  return [];
+}
+
 export default function RoutinesPage() {
   const { state, upsertRoutine, deleteRoutine, updateSettings } = useAppStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -41,6 +111,7 @@ export default function RoutinesPage() {
   const [weight, setWeight] = useState(0);
   const [reps, setReps] = useState(8);
   const [sets, setSets] = useState(3);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (selectedId === "new") {
@@ -131,6 +202,37 @@ export default function RoutinesPage() {
     setSelectedId(id);
   };
 
+  const exportRoutine = () => {
+    const routine = currentRoutine ?? state.routines.find((routine) => routine.id === state.settings.activeRoutineId) ?? state.routines[0];
+    if (!routine) return;
+    downloadFile(
+      `${routine.name.replace(/[\\/:*?"<>|]+/g, "-").trim() || "rutina"}.json`,
+      JSON.stringify(routine, null, 2),
+      "application/json"
+    );
+  };
+
+  const importRoutine = () => {
+    fileInputRef.current?.click();
+  };
+
+  const onImportFile = async (file: File | null) => {
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text) as unknown;
+      const routines = normalizePayload(parsed);
+      if (!routines.length) return;
+      routines.forEach((routine) => upsertRoutine(routine));
+      const last = routines[0];
+      setSelectedId(last.id);
+      setDraft(last);
+      updateSettings({ activeRoutineId: last.id });
+    } catch {
+      // Silencioso: el archivo no tenía el formato esperado.
+    }
+  };
+
   return (
     <MobileShell active="/routines">
       <div className="flex-1 overflow-y-auto pb-28 scrollbar-hide">
@@ -138,11 +240,28 @@ export default function RoutinesPage() {
           subtitle="Rutinas"
           title="Tus planes"
           right={
-            <Button variant="secondary" className="h-11 gap-2 px-3" onClick={startNew}>
-              <Plus className="h-4 w-4" />
-              Nueva
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="secondary" className="h-11 gap-2 px-3" onClick={importRoutine}>
+                <Upload className="h-4 w-4" />
+                Subir
+              </Button>
+              <Button variant="secondary" className="h-11 gap-2 px-3" onClick={startNew}>
+                <Plus className="h-4 w-4" />
+                Nueva
+              </Button>
+            </div>
           }
+        />
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="application/json,.json"
+          className="hidden"
+          onChange={(e) => {
+            void onImportFile(e.target.files?.[0] ?? null);
+            e.currentTarget.value = "";
+          }}
         />
 
         <div className="px-5">
@@ -172,6 +291,19 @@ export default function RoutinesPage() {
               </div>
             ) : null}
           </div>
+
+          <Card className="mt-4 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Biblioteca</div>
+                <div className="mt-1 text-sm text-muted-foreground">{routineCount} rutinas guardadas · puedes descargarlas o subirlas en JSON.</div>
+              </div>
+              <Button variant="secondary" className="gap-2" onClick={exportRoutine} disabled={!currentRoutine && !state.routines.length}>
+                <Download className="h-4 w-4" />
+                Descargar
+              </Button>
+            </div>
+          </Card>
 
           {selectedId ? (
             <>
