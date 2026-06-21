@@ -111,7 +111,6 @@ export default function RoutinesPage() {
   const [dayLabel, setDayLabel] = useState("Día 1");
   const [exerciseName, setExerciseName] = useState("");
   const [muscleGroup, setMuscleGroup] = useState<MuscleGroup>("Pecho");
-  const [weight, setWeight] = useState(0);
   const [reps, setReps] = useState(8);
   const [sets, setSets] = useState(3);
   const [restSeconds, setRestSeconds] = useState(60);
@@ -155,16 +154,15 @@ export default function RoutinesPage() {
           dayLabel,
           exerciseName: trimmed,
           muscleGroup,
-          weight,
+          weight: 0,
           reps,
           sets,
           restSeconds,
-          order: nextOrder
+          order: nextOrder,
         }
       ]
     }));
     setExerciseName("");
-    setWeight(0);
     setRestSeconds(60);
   };
 
@@ -344,7 +342,6 @@ export default function RoutinesPage() {
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <Field label="Ejercicio" value={exerciseName} onChange={(e) => setExerciseName(e.target.value)} placeholder="Ej. Press militar" />
-                    <Field label={`Peso (${state.settings.units})`} type="number" value={weight} onChange={(e) => setWeight(Number(e.target.value))} />
                   </div>
                   <div className="grid grid-cols-3 gap-3">
                     <Field label="Repeticiones" type="number" value={reps} onChange={(e) => setReps(Number(e.target.value))} />
@@ -395,7 +392,6 @@ export default function RoutinesPage() {
                               <Field label="Ejercicio" value={item.exerciseName} onChange={(e) => setDraft((current) => ({ ...current, items: current.items.map((row) => row.id === item.id ? { ...row, exerciseName: e.target.value } : row) }))} />
                             </div>
                             <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
-                              <Field type="number" value={item.weight} onChange={(e) => setDraft((current) => ({ ...current, items: current.items.map((row) => row.id === item.id ? { ...row, weight: Number(e.target.value) } : row) }))} label="Peso" />
                               <Field type="number" value={item.reps} onChange={(e) => setDraft((current) => ({ ...current, items: current.items.map((row) => row.id === item.id ? { ...row, reps: Number(e.target.value) } : row) }))} label="Reps" />
                               <Field type="number" value={item.sets} onChange={(e) => setDraft((current) => ({ ...current, items: current.items.map((row) => row.id === item.id ? { ...row, sets: Number(e.target.value) } : row) }))} label="Series" />
                               <Field type="number" min={0} value={item.restSeconds ?? 60} onChange={(e) => setDraft((current) => ({ ...current, items: current.items.map((row) => row.id === item.id ? { ...row, restSeconds: Number(e.target.value) } : row) }))} label="Descanso (s)" />

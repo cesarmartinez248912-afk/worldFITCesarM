@@ -31,7 +31,6 @@ function nextRoutineDay(days: string[], lastDay?: string) {
 function buildDraftEntry(entry: {
   exerciseName: string;
   muscleGroup: MuscleGroup;
-  weight: number;
   reps: number;
   sets: number;
   restSeconds?: number;
@@ -42,7 +41,7 @@ function buildDraftEntry(entry: {
     exerciseId: createId("ex"),
     exerciseName: entry.exerciseName,
     muscleGroup: entry.muscleGroup,
-    weight: entry.weight,
+    weight: 0,
     reps: entry.reps,
     sets: entry.sets,
     restSeconds: entry.restSeconds ?? 60,
@@ -68,7 +67,6 @@ export default function RegisterPage() {
   const [startedAt, setStartedAt] = useState(new Date().toISOString().slice(0, 16));
   const [exerciseName, setExerciseName] = useState("");
   const [muscleGroup, setMuscleGroup] = useState<MuscleGroup>("Pecho");
-  const [weight, setWeight] = useState(0);
   const [reps, setReps] = useState(8);
   const [sets, setSets] = useState(3);
   const [restSeconds, setRestSeconds] = useState(60);
@@ -127,7 +125,6 @@ export default function RegisterPage() {
         {
           exerciseName: item.exerciseName,
           muscleGroup: item.muscleGroup,
-          weight: item.weight,
           reps: item.reps,
           sets: item.sets,
           restSeconds: item.restSeconds,
@@ -143,7 +140,7 @@ export default function RegisterPage() {
     setWeightInput("");
 
     if (next.length) {
-      setWeightInput(String(next[0].weight || ""));
+      setWeightInput("");
     }
   };
 
@@ -152,20 +149,19 @@ export default function RegisterPage() {
     if (!name) return;
     setPendingEntries((current) => [
       ...current,
-      buildDraftEntry({ exerciseName: name, muscleGroup, weight, reps, sets, restSeconds }, current.length + 1)
+      buildDraftEntry({ exerciseName: name, muscleGroup, reps, sets, restSeconds }, current.length + 1)
     ]);
     setExerciseName("");
-    setWeight(0);
     setRestSeconds(60);
     if (!hasWorkoutStarted) {
       setActiveIndex(0);
-      setWeightInput(String(weight || ""));
+      setWeightInput("");
     }
   };
 
   useEffect(() => {
     if (currentExercise) {
-      setWeightInput(String(currentExercise.weight || ""));
+      setWeightInput("");
     }
   }, [currentExercise?.id]);
 
@@ -184,7 +180,7 @@ export default function RegisterPage() {
 
   const openFinishPrompt = () => {
     if (!currentExercise) return;
-    setWeightInput(String(currentExercise.weight || ""));
+    setWeightInput("");
     setWeightPromptOpen(true);
   };
 
@@ -277,13 +273,10 @@ export default function RegisterPage() {
               </SelectField>
               <Field label="Ejercicio" value={exerciseName} onChange={(e) => setExerciseName(e.target.value)} placeholder="Ej. Laterales" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label={`Peso (${state.settings.units})`} type="number" value={weight} onChange={(e) => setWeight(Number(e.target.value))} />
-              <div className="grid grid-cols-3 gap-3">
-                <Field label="Repeticiones" type="number" value={reps} onChange={(e) => setReps(Number(e.target.value))} />
-                <Field label="Series" type="number" value={sets} onChange={(e) => setSets(Number(e.target.value))} />
-                <Field label="Descanso (s)" type="number" min={0} value={restSeconds} onChange={(e) => setRestSeconds(Number(e.target.value))} />
-              </div>
+            <div className="grid grid-cols-3 gap-3">
+              <Field label="Repeticiones" type="number" value={reps} onChange={(e) => setReps(Number(e.target.value))} />
+              <Field label="Series" type="number" value={sets} onChange={(e) => setSets(Number(e.target.value))} />
+              <Field label="Descanso (s)" type="number" min={0} value={restSeconds} onChange={(e) => setRestSeconds(Number(e.target.value))} />
             </div>
             <Button variant="secondary" onClick={addLine} className="gap-2">
               <Plus className="h-4 w-4" />
@@ -309,9 +302,6 @@ export default function RegisterPage() {
             <div className="mt-4 rounded-2xl border border-border bg-surface-2 p-4">
               <div className="text-sm font-semibold">{currentExercise.exerciseName}</div>
               <div className="mt-1 text-xs text-muted-foreground">{currentExercise.muscleGroup} · {currentExercise.reps} reps · {currentExercise.sets} series · Descanso {currentExercise.restSeconds ?? 60}s</div>
-              <div className="mt-3 text-sm text-muted-foreground">
-                Peso sugerido: {formatKg(currentExercise.weight, state.settings.units)}
-              </div>
               <Button className="mt-4 w-full gap-2" onClick={openFinishPrompt} disabled={!!restTimer}>
                 Finalizar ejercicio
               </Button>
@@ -396,7 +386,7 @@ export default function RegisterPage() {
                 className="flex-1"
                 onClick={() => {
                   setWeightPromptOpen(false);
-                  setWeightInput(String(currentExercise.weight || ""));
+                  setWeightInput("");
                 }}
               >
                 Cancelar
