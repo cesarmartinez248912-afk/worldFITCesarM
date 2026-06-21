@@ -58,12 +58,12 @@ function normalizeImportedRoutine(input: unknown): RoutineTemplate | null {
         : "Otro";
       if (!exerciseName) return null;
 
+      // FIX 10: RoutineItem ya no guarda weight; se normaliza solo lo que sí usa la rutina.
       return {
         id: createId("ri"),
         dayLabel,
         exerciseName,
         muscleGroup,
-        weight: Number.isFinite(Number(row.weight)) ? Number(row.weight) : 0,
         reps: Number.isFinite(Number(row.reps)) ? Number(row.reps) : 8,
         sets: Number.isFinite(Number(row.sets)) ? Number(row.sets) : 3,
         restSeconds: Number.isFinite(Number(row.restSeconds)) ? Number(row.restSeconds) : undefined,
@@ -154,7 +154,6 @@ export default function RoutinesPage() {
           dayLabel,
           exerciseName: trimmed,
           muscleGroup,
-          weight: 0,
           reps,
           sets,
           restSeconds,
@@ -367,7 +366,16 @@ export default function RoutinesPage() {
                       Duplicar
                     </Button>
                     {draft.id && !selectedIsNew ? (
-                      <Button variant="danger" className="gap-2" onClick={() => deleteRoutine(draft.id)}>
+                      <Button
+                        variant="danger"
+                        className="gap-2"
+                        onClick={() => {
+                          // FIX 13: confirmar antes de borrar una rutina.
+                          if (window.confirm("¿Borrar esta rutina? Se eliminará de tus planes guardados.")) {
+                            deleteRoutine(draft.id);
+                          }
+                        }}
+                      >
                         <Trash2 className="h-4 w-4" />
                         Borrar
                       </Button>

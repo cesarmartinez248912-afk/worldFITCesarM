@@ -1,4 +1,5 @@
 import type { AppState, DashboardSummary, ExerciseProgressPoint, Goal, MuscleGroup, PeriodComparison, RoutineTemplate, WorkoutEntry, WorkoutSession } from "@/types";
+import { formatDateLabel } from "@/utils/format";
 
 const GROUPS: MuscleGroup[] = ["Pecho", "Espalda", "Pierna", "Hombros", "Bíceps", "Tríceps", "Core", "Cardio", "Full Body", "Otro"];
 
@@ -42,31 +43,35 @@ export function getWeeklyRange(now = new Date()): { start: Date; end: Date; prev
   return { start, end, previousStart, previousEnd };
 }
 
+// FIX 8: una sola pasada para volumen, reps y series en el rango pedido.
+function periodStats(sessions: WorkoutSession[], start: Date, end: Date): { volume: number; reps: number; sets: number } {
+  let volume = 0;
+  let reps = 0;
+  let sets = 0;
+  const startMs = start.getTime();
+  const endMs = end.getTime();
+
+  for (const session of sessions) {
+    const time = new Date(session.startedAt).getTime();
+    if (time < startMs || time > endMs) continue;
+    volume += sessionVolume(session);
+    reps += sessionReps(session);
+    sets += sessionSets(session);
+  }
+
+  return { volume, reps, sets };
+}
+
 function periodVolume(sessions: WorkoutSession[], start: Date, end: Date): number {
-  return sessions
-    .filter((session) => {
-      const time = new Date(session.startedAt).getTime();
-      return time >= start.getTime() && time <= end.getTime();
-    })
-    .reduce((total, session) => total + sessionVolume(session), 0);
+  return periodStats(sessions, start, end).volume;
 }
 
 function periodReps(sessions: WorkoutSession[], start: Date, end: Date): number {
-  return sessions
-    .filter((session) => {
-      const time = new Date(session.startedAt).getTime();
-      return time >= start.getTime() && time <= end.getTime();
-    })
-    .reduce((total, session) => total + sessionReps(session), 0);
+  return periodStats(sessions, start, end).reps;
 }
 
 function periodSets(sessions: WorkoutSession[], start: Date, end: Date): number {
-  return sessions
-    .filter((session) => {
-      const time = new Date(session.startedAt).getTime();
-      return time >= start.getTime() && time <= end.getTime();
-    })
-    .reduce((total, session) => total + sessionSets(session), 0);
+  return periodStats(sessions, start, end).sets;
 }
 
 function periodComparison(current: number, previous: number): PeriodComparison {
@@ -82,10 +87,12 @@ export function weekComparison(sessions: WorkoutSession[], now = new Date()): {
   label: string;
 } {
   const { start, end, previousStart, previousEnd } = getWeeklyRange(now);
+  const current = periodStats(sessions, start, end);
+  const previous = periodStats(sessions, previousStart, previousEnd);
   return {
-    volume: periodComparison(periodVolume(sessions, start, end), periodVolume(sessions, previousStart, previousEnd)),
-    reps: periodComparison(periodReps(sessions, start, end), periodReps(sessions, previousStart, previousEnd)),
-    sets: periodComparison(periodSets(sessions, start, end), periodSets(sessions, previousStart, previousEnd)),
+    volume: periodComparison(current.volume, previous.volume),
+    reps: periodComparison(current.reps, previous.reps),
+    sets: periodComparison(current.sets, previous.sets),
     label: `${start.toLocaleDateString("es-MX", { day: "2-digit", month: "short" })} - ${end.toLocaleDateString("es-MX", { day: "2-digit", month: "short" })}`
   };
 }
@@ -134,23 +141,24 @@ export function bestExerciseName(sessions: WorkoutSession[]): string {
   return sorted[0]?.[0] ?? "Sin datos";
 }
 
+// FIX 4: iterar de más antigua a más reciente para que el último PR sea realmente el más reciente.
 export function latestPRLabel(sessions: WorkoutSession[]): string {
-  const sorted = sortSessionsNewestFirst(sessions);
-  let latest = "";
-  let latestScore = 0;
-  const previousBest: Record<string, number> = {};
+  const sorted = [...sessions].sort((a, b) => +new Date(a.startedAt) - +new Date(b.startedAt));
+  const allTimeBest: Record<string, number> = {};
+  let latestPR = "";
+
   for (const session of sorted) {
     for (const entry of session.entries) {
       const score = estimateOneRepMax(entry.weight, entry.reps);
-      const prev = previousBest[entry.exerciseName] ?? 0;
-      if (score > prev && score >= latestScore) {
-        latestScore = score;
-        latest = `${entry.exerciseName} · ${Math.round(score)} kg 1RM`;
+      const bestSoFar = allTimeBest[entry.exerciseName] ?? 0;
+      if (score > bestSoFar) {
+        allTimeBest[entry.exerciseName] = score;
+        latestPR = `${entry.exerciseName} · ${Math.round(score)} kg 1RM · ${formatDateLabel(session.startedAt)}`;
       }
-      previousBest[entry.exerciseName] = Math.max(prev, score);
     }
   }
-  return latest || "Sin récord reciente";
+
+  return latestPR || "Sin récord reciente";
 }
 
 export function latestSession(sessions: WorkoutSession[]): WorkoutSession | undefined {
@@ -210,11 +218,12 @@ export function weeklyBuckets(sessions: WorkoutSession[], bucketCount = 7): { la
   });
   for (const session of sessions) {
     const time = new Date(session.startedAt).getTime();
+    const dt = new Date(time);
     for (const bucket of buckets) {
       const sameDay =
-        bucket.date.getFullYear() === new Date(time).getFullYear() &&
-        bucket.date.getMonth() === new Date(time).getMonth() &&
-        bucket.date.getDate() === new Date(time).getDate();
+        bucket.date.getFullYear() === dt.getFullYear() &&
+        bucket.date.getMonth() === dt.getMonth() &&
+        bucket.date.getDate() === dt.getDate();
       if (sameDay) {
         bucket.value += sessionVolume(session);
       }

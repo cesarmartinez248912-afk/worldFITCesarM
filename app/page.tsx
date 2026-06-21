@@ -22,7 +22,7 @@ export default function DashboardPage() {
     { label: "Rutinas", value: `${state.routines.length}` },
     { label: "Sesiones", value: `${state.sessions.length}` },
     { label: "Metas", value: `${state.goals.filter((goal) => !goal.completed).length}` },
-  ]), [state.goals.length, state.routines.length, state.sessions.length]);
+  ]), [state.goals, state.routines.length, state.sessions.length]); // FIX 7: depender del array completo para recalcular al cambiar completed.
 
   return (
     <MobileShell active="/">

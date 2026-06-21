@@ -56,12 +56,66 @@ export async function clearState(): Promise<void> {
   });
 }
 
+// FIX 1: migración acumulativa sin borrar datos existentes.
+function applyDefaults(state: Partial<AppState> & { schemaVersion: number }): AppState {
+  const settings = state.settings ?? seededState.settings;
+  return {
+    schemaVersion: state.schemaVersion,
+    exercises: Array.isArray(state.exercises) ? state.exercises : [],
+    routines: Array.isArray(state.routines) ? state.routines : [],
+    sessions: Array.isArray(state.sessions) ? state.sessions : [],
+    goals: Array.isArray(state.goals) ? state.goals : [],
+    settings: {
+      theme: settings.theme ?? seededState.settings.theme,
+      units: settings.units ?? seededState.settings.units,
+      notifications: settings.notifications ?? seededState.settings.notifications,
+      activeRoutineId: settings.activeRoutineId,
+    },
+    lastUpdated: typeof state.lastUpdated === "string" ? state.lastUpdated : seededState.lastUpdated,
+  };
+}
+
+function migrateState(state: Partial<AppState> & { schemaVersion: number }): AppState {
+  let current = applyDefaults(state);
+
+  for (let version = current.schemaVersion; version < CURRENT_SCHEMA_VERSION; version += 1) {
+    switch (version) {
+      case 1:
+      case 2:
+        current = {
+          ...applyDefaults({ ...current, schemaVersion: version + 1 }),
+          schemaVersion: version + 1,
+        };
+        break;
+      default:
+        return seededState;
+    }
+  }
+
+  return current;
+}
+
 export async function loadOrSeedState(): Promise<AppState> {
   const existing = await loadState();
-  if (existing && existing.schemaVersion === CURRENT_SCHEMA_VERSION) return existing;
-  if (existing) {
-    await clearState();
+
+  if (!existing) {
+    await saveState(seededState);
+    return seededState;
   }
-  await saveState(seededState);
-  return seededState;
+
+  const version = existing.schemaVersion;
+
+  if (version === CURRENT_SCHEMA_VERSION) {
+    return existing;
+  }
+
+  if (version === undefined || version === 0 || version > CURRENT_SCHEMA_VERSION) {
+    console.warn("WorldFit: schemaVersion inválida, se restauró el estado semilla.");
+    await saveState(seededState);
+    return seededState;
+  }
+
+  const migrated = migrateState(existing as Partial<AppState> & { schemaVersion: number });
+  await saveState(migrated);
+  return migrated;
 }

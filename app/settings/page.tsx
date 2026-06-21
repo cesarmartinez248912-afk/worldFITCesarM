@@ -28,6 +28,9 @@ export default function SettingsPage() {
     download(`worldfit-backup-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(state, null, 2), "application/json");
   };
 
+  // FIX 16: el toggle de notificaciones queda visible pero deshabilitado por ahora.
+  const notificationsLabel = "Próximamente";
+
   const exportCsv = () => {
     const rows = [
       ["session_title", "date", "exercise", "muscle_group", "weight", "reps", "sets", "volume"].join(","),
@@ -47,14 +50,18 @@ export default function SettingsPage() {
         <Card className="overflow-hidden">
           <Row icon={<Settings2 className="h-4 w-4" />} label="Acceso local" value="Protegido con contraseña" />
           <Row icon={<Scale className="h-4 w-4" />} label="Unidades" right={<SelectField value={state.settings.units} onChange={(e) => updateSettings({ units: e.target.value as UnitSystem })} className="w-28"><option value="kg">kg</option><option value="lb">lb</option></SelectField>} />
-          <Row icon={<Bell className="h-4 w-4" />} label="Notificaciones" right={<Toggle checked={state.settings.notifications} onChange={(value) => updateSettings({ notifications: value })} />} />
+          <Row icon={<Bell className="h-4 w-4" />} label="Notificaciones" value={notificationsLabel} right={<Toggle checked={state.settings.notifications} disabled onChange={(value) => updateSettings({ notifications: value })} />} />
           <Row icon={state.settings.theme === "dark" ? <MoonStar className="h-4 w-4" /> : <SunMedium className="h-4 w-4" />} label="Tema" right={<SelectField value={state.settings.theme} onChange={(e) => updateSettings({ theme: e.target.value as ThemeMode })} className="w-28"><option value="dark">Oscuro</option><option value="light">Claro</option></SelectField>} />
         </Card>
 
         <Card className="mt-4 overflow-hidden">
           <Row icon={<Download className="h-4 w-4" />} label="Exportar JSON" onClick={exportJson} />
           <Row icon={<FileDown className="h-4 w-4" />} label="Exportar CSV" onClick={exportCsv} />
-          <Row icon={<RefreshCw className="h-4 w-4" />} label="Borrar todo y reiniciar" onClick={resetData} />
+          <Row icon={<RefreshCw className="h-4 w-4" />} label="Borrar todo y reiniciar" onClick={() => {
+            if (window.confirm("¿Borrar todo y reiniciar? Se eliminarán rutinas, sesiones y metas guardadas.")) {
+              resetData();
+            }
+          }} />
           <Row icon={<LogOut className="h-4 w-4" />} label="Cerrar sesión" onClick={logout} />
         </Card>
 

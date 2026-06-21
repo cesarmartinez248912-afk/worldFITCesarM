@@ -21,12 +21,12 @@ export interface Exercise {
   isCustom?: boolean;
 }
 
+// FIX 10: RoutineItem ya no expone weight; ese dato pertenece a WorkoutEntry.
 export interface RoutineItem {
   id: string;
   dayLabel: string;
   exerciseName: string;
   muscleGroup: MuscleGroup;
-  weight: number;
   reps: number;
   sets: number;
   restSeconds?: number;

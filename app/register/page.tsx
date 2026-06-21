@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarDays, Dumbbell, Play, Plus, Save, Sparkles, TimerReset, Trash2 } from "lucide-react";
 import { MobileShell } from "@/components/mobile-shell";
@@ -101,6 +101,8 @@ export default function RegisterPage() {
   const [weightPromptOpen, setWeightPromptOpen] = useState(false);
   const [weightInput, setWeightInput] = useState("");
   const [restTimer, setRestTimer] = useState<{ secondsLeft: number; nextIndex: number; nextExerciseName: string } | null>(null);
+  // FIX 3: marca real de inicio para calcular la duración auténtica del entrenamiento.
+  const workoutStartTimeRef = useRef<number>(0);
 
   useEffect(() => {
     if (!selectedRoutine) return;
@@ -144,6 +146,7 @@ export default function RegisterPage() {
   const hasWorkoutStarted = pendingEntries.length > 0;
 
   const resetWorkout = () => {
+    workoutStartTimeRef.current = 0;
     setPendingEntries([]);
     setCompletedEntries([]);
     setActiveIndex(0);
@@ -153,6 +156,9 @@ export default function RegisterPage() {
 
   const importRoutine = () => {
     if (!selectedRoutine) return;
+    // FIX 3: iniciar el cronómetro real cuando el usuario arranca la rutina.
+    workoutStartTimeRef.current = Date.now();
+    setStartedAt(new Date().toISOString().slice(0, 16));
     const source = routineEntries.length ? routineEntries : selectedRoutine.items;
     const next = source.map((item, index) =>
       buildDraftEntry(
@@ -177,6 +183,11 @@ export default function RegisterPage() {
   const addLine = () => {
     const name = exerciseName.trim();
     if (!name) return;
+    if (pendingEntries.length === 0) {
+      // FIX 3: arrancar el cronómetro real al añadir el primer ejercicio manual.
+      workoutStartTimeRef.current = Date.now();
+      setStartedAt(new Date().toISOString().slice(0, 16));
+    }
     setPendingEntries((current) => [
       ...current,
       buildDraftEntry({ exerciseName: name, muscleGroup, reps, sets, restSeconds }, current.length + 1)
@@ -210,7 +221,11 @@ export default function RegisterPage() {
 
   const openFinishPrompt = () => {
     if (!currentExercise) return;
-    setWeightInput("");
+    // FIX 6: prefill con el último peso registrado para este ejercicio.
+    const found = sortSessionsNewestFirst(state.sessions)
+      .flatMap((session) => session.entries)
+      .find((entry) => entry.exerciseName.toLowerCase() === currentExercise.exerciseName.toLowerCase() && entry.weight > 0);
+    setWeightInput(found ? String(found.weight) : "");
     setWeightPromptOpen(true);
   };
 
@@ -235,12 +250,15 @@ export default function RegisterPage() {
     }
   };
 
+  const durationStartMs = workoutStartTimeRef.current || new Date(startedAt).getTime();
+  // FIX 3: la duración sale del reloj real; solo cae al fallback si no hubo arranque capturado.
+  const actualDurationMinutes = Math.max(1, Math.round((Date.now() - durationStartMs) / 60000));
   const draftSession: WorkoutSession = {
     id: "draft",
     title,
     startedAt: new Date(startedAt).toISOString(),
     completedAt: new Date().toISOString(),
-    durationMinutes: Math.max(20, Math.round(completedEntries.length * 8 + 20)),
+    durationMinutes: actualDurationMinutes,
     notes,
     entries: completedEntries,
     routineId: selectedRoutine?.id,

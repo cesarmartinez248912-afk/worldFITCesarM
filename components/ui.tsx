@@ -68,16 +68,22 @@ export function SelectField({
 export function Toggle({
   checked,
   onChange,
+  disabled = false,
 }: {
   checked: boolean;
   onChange: (value: boolean) => void;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
-      onClick={() => onChange(!checked)}
+      onClick={() => {
+        // FIX 16: el control puede deshabilitarse sin perder la UI visible.
+        if (!disabled) onChange(!checked);
+      }}
+      disabled={disabled}
       className={cn(
-        "relative inline-flex h-7 w-12 items-center rounded-full border border-border transition",
+        "relative inline-flex h-7 w-12 items-center rounded-full border border-border transition disabled:pointer-events-none disabled:opacity-50",
         checked ? "bg-primary" : "bg-surface-3"
       )}
       aria-pressed={checked}

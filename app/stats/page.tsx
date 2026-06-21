@@ -23,6 +23,9 @@ export default function StatsPage() {
     .map(([label, value]) => ({ label, value }))
     .slice(0, 7);
 
+  // FIX 14: mostrar el mes completo en la gráfica mensual sin recortes arbitrarios.
+  const monthlyData = monthlyBuckets(state.sessions);
+
   return (
     <MobileShell active="/stats">
       <div className="flex-1 overflow-y-auto pb-28 scrollbar-hide">
@@ -44,7 +47,7 @@ export default function StatsPage() {
 
               <Card className="p-4">
                 <div className="mb-3 text-sm font-semibold">Evolución mensual</div>
-                <LineChart data={monthlyBuckets(state.sessions).slice(-14)} />
+                <LineChart data={monthlyData} />
               </Card>
 
               <Card className="p-4">

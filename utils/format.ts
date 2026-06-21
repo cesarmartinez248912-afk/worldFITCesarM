@@ -44,6 +44,4 @@ export function formatDuration(minutes: number): string {
   return `${h}h ${String(m).padStart(2, "0")}m`;
 }
 
-export function sum(arr: number[]): number {
-  return arr.reduce((a, b) => a + b, 0);
-}
+// FIX 15: sum se eliminó porque no se usa en el proyecto.
