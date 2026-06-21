@@ -90,14 +90,19 @@ function normalizeImportedRoutine(input: unknown): RoutineTemplate | null {
 
 function normalizePayload(payload: unknown): RoutineTemplate[] {
   if (!payload || typeof payload !== "object") return [];
-  const raw = payload as any;
+  const raw = payload as { routines?: unknown; items?: unknown };
+
   if (Array.isArray(raw.routines)) {
-    return raw.routines.map((routine: unknown) => normalizeImportedRoutine(routine)).filter((routine): routine is RoutineTemplate => Boolean(routine));
+    return raw.routines
+      .map((routine: unknown) => normalizeImportedRoutine(routine))
+      .filter((routine): routine is RoutineTemplate => routine !== null);
   }
+
   if (Array.isArray(raw.items)) {
     const routine = normalizeImportedRoutine(raw);
     return routine ? [routine] : [];
   }
+
   return [];
 }
 
