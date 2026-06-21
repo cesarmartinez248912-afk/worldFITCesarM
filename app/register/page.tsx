@@ -85,6 +85,7 @@ export default function RegisterPage() {
     () => sortSessionsNewestFirst(state.sessions).find((session) => session.routineId && session.routineId === selectedRoutine?.id),
     [selectedRoutine?.id, state.sessions]
   );
+  const lastSession = useMemo(() => sortSessionsNewestFirst(state.sessions)[0], [state.sessions]);
 
   const [selectedDay, setSelectedDay] = useState("Manual");
   const [title, setTitle] = useState(selectedRoutine ? `${selectedRoutine.name}` : "Entrenamiento libre");
@@ -101,11 +102,15 @@ export default function RegisterPage() {
   const [weightPromptOpen, setWeightPromptOpen] = useState(false);
   const [weightInput, setWeightInput] = useState("");
   const [restTimer, setRestTimer] = useState<{ secondsLeft: number; nextIndex: number; nextExerciseName: string } | null>(null);
-  // FIX 3: marca real de inicio para calcular la duración auténtica del entrenamiento.
-  const workoutStartTimeRef = useRef<number>(0);
+  const skipAutoDayRef = useRef(false);
+  const workoutStartTimeRef = useRef(0);
 
   useEffect(() => {
     if (!selectedRoutine) return;
+    if (skipAutoDayRef.current) {
+      skipAutoDayRef.current = false;
+      return;
+    }
     const suggested = nextRoutineDay(routineDays, lastRoutineSession?.routineDay);
     setSelectedDay(suggested);
     setTitle(`${selectedRoutine.name}${suggested && suggested !== "Manual" ? ` · ${suggested}` : ""}`);
@@ -146,19 +151,17 @@ export default function RegisterPage() {
   const hasWorkoutStarted = pendingEntries.length > 0;
 
   const resetWorkout = () => {
-    workoutStartTimeRef.current = 0;
     setPendingEntries([]);
     setCompletedEntries([]);
     setActiveIndex(0);
     setWeightPromptOpen(false);
     setWeightInput("");
+    setRestTimer(null);
+    workoutStartTimeRef.current = 0;
   };
 
   const importRoutine = () => {
     if (!selectedRoutine) return;
-    // FIX 3: iniciar el cronómetro real cuando el usuario arranca la rutina.
-    workoutStartTimeRef.current = Date.now();
-    setStartedAt(new Date().toISOString().slice(0, 16));
     const source = routineEntries.length ? routineEntries : selectedRoutine.items;
     const next = source.map((item, index) =>
       buildDraftEntry(
@@ -178,20 +181,55 @@ export default function RegisterPage() {
     setActiveIndex(0);
     setWeightPromptOpen(false);
     setWeightInput("");
+    setStartedAt(new Date().toISOString().slice(0, 16));
+    workoutStartTimeRef.current = Date.now();
+  };
+
+  const repeatLastSession = () => {
+    if (!lastSession) return;
+    skipAutoDayRef.current = true;
+    if (lastSession.routineId) {
+      setSelectedRoutineId(lastSession.routineId);
+    }
+    setSelectedDay(lastSession.routineDay ?? "Manual");
+    setTitle(lastSession.title);
+    setNotes(lastSession.notes ?? "");
+    setStartedAt(new Date().toISOString().slice(0, 16));
+    workoutStartTimeRef.current = Date.now();
+    setPendingEntries(
+      lastSession.entries.map((entry, index) =>
+        buildDraftEntry(
+          {
+            exerciseName: entry.exerciseName,
+            muscleGroup: entry.muscleGroup,
+            reps: entry.reps,
+            sets: entry.sets,
+            restSeconds: entry.restSeconds,
+            notes: entry.notes,
+          },
+          index + 1
+        )
+      )
+    );
+    setCompletedEntries([]);
+    setActiveIndex(0);
+    setWeightPromptOpen(false);
+    setWeightInput("");
+    setRestTimer(null);
   };
 
   const addLine = () => {
     const name = exerciseName.trim();
     if (!name) return;
-    if (pendingEntries.length === 0) {
-      // FIX 3: arrancar el cronómetro real al añadir el primer ejercicio manual.
-      workoutStartTimeRef.current = Date.now();
-      setStartedAt(new Date().toISOString().slice(0, 16));
-    }
-    setPendingEntries((current) => [
-      ...current,
-      buildDraftEntry({ exerciseName: name, muscleGroup, reps, sets, restSeconds }, current.length + 1)
-    ]);
+    setPendingEntries((current) => {
+      if (current.length === 0) {
+        workoutStartTimeRef.current = Date.now();
+      }
+      return [
+        ...current,
+        buildDraftEntry({ exerciseName: name, muscleGroup, reps, sets, restSeconds }, current.length + 1)
+      ];
+    });
     setExerciseName("");
     setRestSeconds(60);
     if (!hasWorkoutStarted) {
@@ -221,10 +259,7 @@ export default function RegisterPage() {
 
   const openFinishPrompt = () => {
     if (!currentExercise) return;
-    // FIX 6: prefill con el último peso registrado para este ejercicio.
-    const found = sortSessionsNewestFirst(state.sessions)
-      .flatMap((session) => session.entries)
-      .find((entry) => entry.exerciseName.toLowerCase() === currentExercise.exerciseName.toLowerCase() && entry.weight > 0);
+    const found = sortSessionsNewestFirst(state.sessions).flatMap((session) => session.entries).find((entry) => entry.exerciseName.toLowerCase() === currentExercise.exerciseName.toLowerCase() && entry.weight > 0);
     setWeightInput(found ? String(found.weight) : "");
     setWeightPromptOpen(true);
   };
@@ -250,15 +285,13 @@ export default function RegisterPage() {
     }
   };
 
-  const durationStartMs = workoutStartTimeRef.current || new Date(startedAt).getTime();
-  // FIX 3: la duración sale del reloj real; solo cae al fallback si no hubo arranque capturado.
-  const actualDurationMinutes = Math.max(1, Math.round((Date.now() - durationStartMs) / 60000));
+  const startedTimestamp = workoutStartTimeRef.current || new Date(startedAt).getTime();
   const draftSession: WorkoutSession = {
     id: "draft",
     title,
     startedAt: new Date(startedAt).toISOString(),
     completedAt: new Date().toISOString(),
-    durationMinutes: actualDurationMinutes,
+    durationMinutes: Math.max(1, Math.round((Date.now() - startedTimestamp) / 60000)),
     notes,
     entries: completedEntries,
     routineId: selectedRoutine?.id,
@@ -321,6 +354,11 @@ export default function RegisterPage() {
               Limpiar
             </Button>
           </div>
+
+          <Button variant="secondary" className="mt-3 w-full gap-2" onClick={repeatLastSession} disabled={!lastSession}>
+            <Sparkles className="h-4 w-4" />
+            Repetir última sesión
+          </Button>
         </Card>
 
         <Card className="mt-4 p-4">
@@ -357,30 +395,12 @@ export default function RegisterPage() {
                   key={day.label}
                   type="button"
                   onClick={() => setSelectedDay(day.label)}
-                  className={`min-w-[170px] shrink-0 rounded-[1.25rem] border p-3 text-left transition ${isActive ? "border-primary bg-[rgba(255,179,181,0.12)]" : "border-border bg-surface-2"}`}
+                  className={`shrink-0 rounded-full border px-4 py-2 text-sm font-semibold transition ${isActive ? "border-primary bg-[rgba(255,179,181,0.16)] text-foreground" : "border-border bg-surface-2 text-muted-foreground"}`}
                 >
-                  <div className="text-sm font-semibold">{day.label}</div>
-                  <div className="mt-1 text-xs text-muted-foreground">{day.exercises} ejercicios · {day.sets} series</div>
-                  <div className="mt-2 text-[11px] text-muted-foreground">
-                    {day.items.slice(0, 2).map((item) => item.exerciseName).join(" · ")}
-                    {day.items.length > 2 ? " · ..." : ""}
-                  </div>
+                  {day.label}
                 </button>
               );
             })}
-          </div>
-
-          <div className="mt-4 rounded-2xl border border-border bg-surface-2 p-3">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Vista rápida</div>
-                <div className="mt-1 text-sm text-muted-foreground">{routineEntries.length ? `${routineEntries.length} ejercicios listos para hoy.` : selectedRoutine ? "Mira el plan completo de la rutina sin tanta información." : "Crea una rutina para verla aquí."}</div>
-              </div>
-              <div className="text-right text-xs text-muted-foreground">
-                <div className="font-semibold text-foreground">{selectedRoutine?.name ?? "Sin rutina"}</div>
-                <div>{selectedDay === "Manual" ? "Modo manual" : selectedDay}</div>
-              </div>
-            </div>
           </div>
         </Card>
 

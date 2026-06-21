@@ -7,7 +7,7 @@ import { MobileShell, TopAccent } from "@/components/mobile-shell";
 import { Card } from "@/components/ui";
 import { useAppStore } from "@/hooks/use-app-store";
 import { appSummary, latestSession, previousSessionWithSameRoutine, compareSessions, weekComparison } from "@/utils/analytics";
-import { formatDateTime, formatDuration, formatVolume } from "@/utils/format";
+import { formatDateTime, formatDuration, formatVolume, toIsoDateOnly } from "@/utils/format";
 
 export default function DashboardPage() {
   const { state } = useAppStore();
@@ -22,7 +22,37 @@ export default function DashboardPage() {
     { label: "Rutinas", value: `${state.routines.length}` },
     { label: "Sesiones", value: `${state.sessions.length}` },
     { label: "Metas", value: `${state.goals.filter((goal) => !goal.completed).length}` },
-  ]), [state.goals, state.routines.length, state.sessions.length]); // FIX 7: depender del array completo para recalcular al cambiar completed.
+  ]), [state.goals, state.routines.length, state.sessions.length]);
+
+  const sessionDays = useMemo(() => new Set(state.sessions.map((session) => toIsoDateOnly(session.startedAt))), [state.sessions]);
+
+  const currentStreak = useMemo(() => {
+    if (!state.sessions.length) return 0;
+    const latestTime = Math.max(...state.sessions.map((session) => new Date(session.startedAt).getTime()));
+    if (!Number.isFinite(latestTime)) return 0;
+    const cursor = new Date(latestTime);
+    cursor.setHours(0, 0, 0, 0);
+    let count = 0;
+    while (sessionDays.has(toIsoDateOnly(cursor))) {
+      count += 1;
+      cursor.setDate(cursor.getDate() - 1);
+    }
+    return count;
+  }, [sessionDays, state.sessions]);
+
+  const recentDays = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return Array.from({ length: 14 }, (_, index) => {
+      const date = new Date(today);
+      date.setDate(today.getDate() - (13 - index));
+      return {
+        label: date.toLocaleDateString("es-MX", { weekday: "short" }).replace(".", ""),
+        iso: toIsoDateOnly(date),
+        active: sessionDays.has(toIsoDateOnly(date)),
+      };
+    });
+  }, [sessionDays]);
 
   return (
     <MobileShell active="/">
@@ -81,6 +111,28 @@ export default function DashboardPage() {
               />
               <MiniStat label="Reps" value={`${currentWeek.reps.current}`} sub={state.sessions.length ? `${currentWeek.reps.delta >= 0 ? "+" : ""}${currentWeek.reps.delta}` : "Sin datos"} />
               <MiniStat label="Series" value={`${currentWeek.sets.current}`} sub={state.sessions.length ? `${currentWeek.sets.delta >= 0 ? "+" : ""}${currentWeek.sets.delta}` : "Sin datos"} />
+            </div>
+          </Card>
+
+          <Card className="mt-4 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Racha de entrenamiento</div>
+                <div className="mt-1 text-2xl font-bold">{currentStreak} {currentStreak === 1 ? "día" : "días"}</div>
+                <div className="mt-1 text-sm text-muted-foreground">Entrenamientos consecutivos en tu secuencia más reciente.</div>
+              </div>
+              <div className="rounded-full border border-border bg-surface-2 p-3 text-secondary">
+                <CalendarDays className="h-5 w-5" />
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-2" style={{ gridTemplateColumns: `repeat(${recentDays.length}, minmax(0, 1fr))` }}>
+              {recentDays.map((day) => (
+                <div key={day.iso} className="flex flex-col items-center gap-2">
+                  <div className={`h-3 w-3 rounded-full border ${day.active ? "border-primary bg-primary" : "border-border bg-surface-2"}`} aria-label={day.active ? "Día con entrenamiento" : "Día sin entrenamiento"} />
+                  <div className="text-[10px] font-medium text-muted-foreground">{day.label}</div>
+                </div>
+              ))}
             </div>
           </Card>
 

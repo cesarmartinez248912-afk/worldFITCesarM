@@ -1,14 +1,15 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import { BarChart3, Flame, TrendingDown, TrendingUp, Zap } from "lucide-react";
 import type { ReactNode } from "react";
 import { MobileShell, TopAccent } from "@/components/mobile-shell";
-import { Card } from "@/components/ui";
+import { Card, SelectField } from "@/components/ui";
 import { BarChart } from "@/components/charts/bar-chart";
 import { LineChart } from "@/components/charts/line-chart";
 import { useAppStore } from "@/hooks/use-app-store";
-import { getMonthlyVolume, getYearlyVolume, groupVolumeByMuscle, stagnatingExercises, weekComparison, weeklyBuckets, monthlyBuckets, yearlyBuckets } from "@/utils/analytics";
-import { formatVolume } from "@/utils/format";
+import { getMonthlyVolume, getYearlyVolume, groupVolumeByMuscle, stagnatingExercises, weekComparison, weeklyBuckets, monthlyBuckets, yearlyBuckets, progressByExercise } from "@/utils/analytics";
+import { formatKg, formatVolume } from "@/utils/format";
 
 export default function StatsPage() {
   const { state } = useAppStore();
@@ -17,14 +18,34 @@ export default function StatsPage() {
   const yearly = getYearlyVolume(state.sessions);
   const byGroup = groupVolumeByMuscle(state.sessions);
   const stagnating = stagnatingExercises(state.sessions);
+  const exerciseNames = useMemo(() => Array.from(new Set(state.sessions.flatMap((session) => session.entries.map((entry) => entry.exerciseName)))).sort((a, b) => a.localeCompare(b, "es")), [state.sessions]);
+  const [selectedExercise, setSelectedExercise] = useState("");
+
+  useEffect(() => {
+    if (!exerciseNames.length) {
+      setSelectedExercise("");
+      return;
+    }
+    if (!selectedExercise || !exerciseNames.includes(selectedExercise)) {
+      setSelectedExercise(exerciseNames[0]);
+    }
+  }, [exerciseNames, selectedExercise]);
+
+  const exerciseProgress = useMemo(() => {
+    if (!selectedExercise) return [];
+    return progressByExercise(state.sessions, selectedExercise).map((point) => ({
+      label: new Intl.DateTimeFormat("es-MX", { day: "2-digit", month: "short" }).format(new Date(point.date)),
+      value: Math.round(point.value),
+    }));
+  }, [selectedExercise, state.sessions]);
+
+  const latestProgress = exerciseProgress[exerciseProgress.length - 1]?.value ?? 0;
+  const bestProgress = exerciseProgress.reduce((max, point) => Math.max(max, point.value), 0);
 
   const groupData = Object.entries(byGroup)
     .filter(([, value]) => value > 0)
     .map(([label, value]) => ({ label, value }))
     .slice(0, 7);
-
-  // FIX 14: mostrar el mes completo en la gráfica mensual sin recortes arbitrarios.
-  const monthlyData = monthlyBuckets(state.sessions);
 
   return (
     <MobileShell active="/stats">
@@ -41,13 +62,42 @@ export default function StatsPage() {
           {state.sessions.length ? (
             <>
               <Card className="p-4">
+                <div className="mb-3 text-sm font-semibold">Progreso por ejercicio</div>
+                <div className="mb-3 grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
+                  <div>
+                    <div className="text-xs text-muted-foreground">Seguimiento del 1RM estimado de tus levantamientos más recientes.</div>
+                    {selectedExercise ? <div className="mt-1 text-lg font-bold">{selectedExercise}</div> : null}
+                  </div>
+                  <SelectField
+                    label="Ejercicio"
+                    value={selectedExercise}
+                    onChange={(e) => setSelectedExercise(e.target.value)}
+                    className="min-w-0 md:w-64"
+                  >
+                    {exerciseNames.map((name) => <option key={name} value={name}>{name}</option>)}
+                  </SelectField>
+                </div>
+                <LineChart data={exerciseProgress.length ? exerciseProgress : [{ label: "Sin datos", value: 0 }]} />
+                <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                  <div className="rounded-2xl bg-surface-2 p-3">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Último 1RM</div>
+                    <div className="mt-1 font-semibold">{exerciseProgress.length ? formatKg(latestProgress, state.settings.units) : "--"}</div>
+                  </div>
+                  <div className="rounded-2xl bg-surface-2 p-3">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Mejor marca</div>
+                    <div className="mt-1 font-semibold">{exerciseProgress.length ? formatKg(bestProgress, state.settings.units) : "--"}</div>
+                  </div>
+                </div>
+              </Card>
+
+              <Card className="p-4">
                 <div className="mb-3 text-sm font-semibold">Evolución semanal</div>
                 <BarChart data={weeklyBuckets(state.sessions)} />
               </Card>
 
               <Card className="p-4">
                 <div className="mb-3 text-sm font-semibold">Evolución mensual</div>
-                <LineChart data={monthlyData} />
+                <LineChart data={monthlyBuckets(state.sessions)} />
               </Card>
 
               <Card className="p-4">
