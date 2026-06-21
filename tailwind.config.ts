@@ -43,8 +43,8 @@ const config: Config = {
         "3xl": "2rem"
       },
       boxShadow: {
-        soft: "0 12px 32px rgba(0,0,0,.28)",
-        glow: "0 0 0 1px rgba(255,255,255,.04), 0 10px 30px rgba(255,45,85,.15)"
+        soft: "0 12px 32px rgba(0,0,0,.22)",
+        glow: "0 0 0 1px rgba(255,255,255,.04), 0 10px 30px rgba(79,124,255,.18)"
       },
       fontFamily: {
         sans: ["Inter", "system-ui", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "sans-serif"]

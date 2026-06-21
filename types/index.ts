@@ -29,6 +29,7 @@ export interface RoutineItem {
   weight: number;
   reps: number;
   sets: number;
+  restSeconds?: number;
   order: number;
   notes?: string;
 }
@@ -50,6 +51,7 @@ export interface WorkoutEntry {
   weight: number;
   reps: number;
   sets: number;
+  restSeconds?: number;
   notes?: string;
 }
 

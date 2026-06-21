@@ -1,7 +1,7 @@
 import type { AppState } from "@/types";
 
 export const seededState: AppState = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   exercises: [],
   routines: [],
   goals: [],

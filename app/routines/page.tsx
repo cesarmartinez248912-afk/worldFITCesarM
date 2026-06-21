@@ -66,6 +66,7 @@ function normalizeImportedRoutine(input: unknown): RoutineTemplate | null {
         weight: Number.isFinite(Number(row.weight)) ? Number(row.weight) : 0,
         reps: Number.isFinite(Number(row.reps)) ? Number(row.reps) : 8,
         sets: Number.isFinite(Number(row.sets)) ? Number(row.sets) : 3,
+        restSeconds: Number.isFinite(Number(row.restSeconds)) ? Number(row.restSeconds) : undefined,
         order: Number.isFinite(Number(row.order)) ? Number(row.order) : index + 1,
         notes: typeof row.notes === "string" && row.notes.trim() ? row.notes.trim() : undefined,
       };
@@ -91,18 +92,15 @@ function normalizeImportedRoutine(input: unknown): RoutineTemplate | null {
 function normalizePayload(payload: unknown): RoutineTemplate[] {
   if (!payload || typeof payload !== "object") return [];
   const raw = payload as { routines?: unknown; items?: unknown };
-
   if (Array.isArray(raw.routines)) {
     return raw.routines
       .map((routine: unknown) => normalizeImportedRoutine(routine))
       .filter((routine): routine is RoutineTemplate => routine !== null);
   }
-
   if (Array.isArray(raw.items)) {
     const routine = normalizeImportedRoutine(raw);
     return routine ? [routine] : [];
   }
-
   return [];
 }
 
@@ -116,6 +114,7 @@ export default function RoutinesPage() {
   const [weight, setWeight] = useState(0);
   const [reps, setReps] = useState(8);
   const [sets, setSets] = useState(3);
+  const [restSeconds, setRestSeconds] = useState(60);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -159,12 +158,14 @@ export default function RoutinesPage() {
           weight,
           reps,
           sets,
+          restSeconds,
           order: nextOrder
         }
       ]
     }));
     setExerciseName("");
     setWeight(0);
+    setRestSeconds(60);
   };
 
   const saveRoutine = () => {
@@ -278,7 +279,7 @@ export default function RoutinesPage() {
                 <button
                   key={routine.id}
                   onClick={() => openRoutine(routine.id)}
-                  className={`rounded-2xl border p-4 text-left transition ${selected ? "border-primary bg-[rgba(255,179,181,0.10)]" : "border-border bg-surface-2"}`}
+                  className={`rounded-2xl border p-4 text-left transition ${selected ? "border-primary bg-[rgba(124,140,255,0.10)]" : "border-border bg-surface-2"}`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -345,9 +346,10 @@ export default function RoutinesPage() {
                     <Field label="Ejercicio" value={exerciseName} onChange={(e) => setExerciseName(e.target.value)} placeholder="Ej. Press militar" />
                     <Field label={`Peso (${state.settings.units})`} type="number" value={weight} onChange={(e) => setWeight(Number(e.target.value))} />
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-3 gap-3">
                     <Field label="Repeticiones" type="number" value={reps} onChange={(e) => setReps(Number(e.target.value))} />
                     <Field label="Series" type="number" value={sets} onChange={(e) => setSets(Number(e.target.value))} />
+                    <Field label="Descanso (s)" type="number" min={0} value={restSeconds} onChange={(e) => setRestSeconds(Number(e.target.value))} />
                   </div>
                   <Button onClick={addItem} className="gap-2">
                     <Plus className="h-4 w-4" />
@@ -392,13 +394,14 @@ export default function RoutinesPage() {
                               </SelectField>
                               <Field label="Ejercicio" value={item.exerciseName} onChange={(e) => setDraft((current) => ({ ...current, items: current.items.map((row) => row.id === item.id ? { ...row, exerciseName: e.target.value } : row) }))} />
                             </div>
-                            <div className="mt-3 grid grid-cols-3 gap-3">
+                            <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
                               <Field type="number" value={item.weight} onChange={(e) => setDraft((current) => ({ ...current, items: current.items.map((row) => row.id === item.id ? { ...row, weight: Number(e.target.value) } : row) }))} label="Peso" />
                               <Field type="number" value={item.reps} onChange={(e) => setDraft((current) => ({ ...current, items: current.items.map((row) => row.id === item.id ? { ...row, reps: Number(e.target.value) } : row) }))} label="Reps" />
                               <Field type="number" value={item.sets} onChange={(e) => setDraft((current) => ({ ...current, items: current.items.map((row) => row.id === item.id ? { ...row, sets: Number(e.target.value) } : row) }))} label="Series" />
+                              <Field type="number" min={0} value={item.restSeconds ?? 60} onChange={(e) => setDraft((current) => ({ ...current, items: current.items.map((row) => row.id === item.id ? { ...row, restSeconds: Number(e.target.value) } : row) }))} label="Descanso (s)" />
                             </div>
                             <div className="mt-3 flex items-center justify-between gap-3">
-                              <div className="text-xs text-muted-foreground">Orden: {item.order}</div>
+                              <div className="text-xs text-muted-foreground">Orden: {item.order} · Descanso: {item.restSeconds ?? 60}s</div>
                               <Button variant="secondary" className="gap-2" onClick={() => setDraft((current) => ({ ...current, items: current.items.filter((row) => row.id !== item.id) }))}>
                                 <Trash2 className="h-4 w-4" />
                                 Quitar

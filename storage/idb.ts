@@ -4,7 +4,7 @@ import { seededState } from "@/storage/seed";
 const DB_NAME = "pure-lift-tracker";
 const STORE = "state";
 const KEY = "main";
-const CURRENT_SCHEMA_VERSION = 2;
+const CURRENT_SCHEMA_VERSION = 3;
 
 function openDatabase(): Promise<IDBDatabase> {
   if (typeof indexedDB === "undefined") {
