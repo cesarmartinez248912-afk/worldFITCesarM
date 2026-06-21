@@ -48,7 +48,7 @@ function normalizeImportedRoutine(input: unknown): RoutineTemplate | null {
 
   const items = Array.isArray(raw.items) ? raw.items : [];
   const normalizedItems = items
-    .map((item, index) => {
+    .map((item, index): RoutineItem | null => {
       if (!item || typeof item !== "object") return null;
       const row = item as Partial<RoutineItem>;
       const exerciseName = typeof row.exerciseName === "string" ? row.exerciseName.trim() : "";
@@ -68,9 +68,9 @@ function normalizeImportedRoutine(input: unknown): RoutineTemplate | null {
         sets: Number.isFinite(Number(row.sets)) ? Number(row.sets) : 3,
         order: Number.isFinite(Number(row.order)) ? Number(row.order) : index + 1,
         notes: typeof row.notes === "string" && row.notes.trim() ? row.notes.trim() : undefined,
-      } satisfies RoutineItem;
+      };
     })
-    .filter((item): item is RoutineItem => Boolean(item))
+    .filter((item): item is RoutineItem => item !== null)
     .sort((a, b) => a.order - b.order);
 
   if (!normalizedItems.length) return null;
