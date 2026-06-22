@@ -11,6 +11,7 @@ export default function LoginPage() {
   const { login, authenticated } = useAuth();
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const loginConfigured = Boolean(process.env.NEXT_PUBLIC_WORLD_FIT_PASSWORD);
 
   useEffect(() => {
     if (authenticated) router.replace("/");
@@ -22,7 +23,7 @@ export default function LoginPage() {
       router.replace("/");
       return;
     }
-    setError("Contraseña incorrecta");
+    setError(loginConfigured ? "Contraseña incorrecta" : "La contraseña local no está configurada en este build.");
   };
 
   return (
@@ -59,6 +60,7 @@ export default function LoginPage() {
 
         <div className="mt-4 rounded-2xl border border-border bg-surface-2 p-4 text-sm text-muted-foreground">
           El acceso se guarda solo mientras la app siga abierta. Si cierras la pestaña, ventana o app, volverá a pedir la contraseña.
+          {!loginConfigured ? <div className="mt-2 text-xs text-warning">Falta configurar NEXT_PUBLIC_WORLD_FIT_PASSWORD en el build.</div> : null}
         </div>
       </Card>
     </div>

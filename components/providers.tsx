@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { AppStoreProvider, useAppStore } from "@/hooks/use-app-store";
 
 const LOGIN_KEY = "worldfit-auth-session";
-const LOGIN_PASSWORD = "cesarinvent10";
+const LOGIN_PASSWORD = process.env.NEXT_PUBLIC_WORLD_FIT_PASSWORD ?? "";
 
 function getSessionStorage() {
   if (typeof window === "undefined") return null;
@@ -33,7 +33,6 @@ function AuthProvider({ children }: { children: ReactNode }) {
       const session = getSessionStorage();
       const isAuthenticated = session?.getItem(LOGIN_KEY) === "1";
       setAuthenticated(isAuthenticated);
-      // Limpia restos de una versión anterior que usaba localStorage persistente.
       getSessionStorage()?.removeItem(LOGIN_KEY);
       localStorage.removeItem(LOGIN_KEY);
     } finally {
@@ -54,7 +53,7 @@ function AuthProvider({ children }: { children: ReactNode }) {
     ready,
     authenticated,
     login: (password: string) => {
-      const ok = password === LOGIN_PASSWORD;
+      const ok = Boolean(LOGIN_PASSWORD) && password === LOGIN_PASSWORD;
       if (ok) {
         const session = getSessionStorage();
         session?.setItem(LOGIN_KEY, "1");
@@ -95,6 +94,31 @@ function ThemeBridge({ children }: { children: ReactNode }) {
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js").catch(() => {});
     }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function requestPersistence() {
+      if (!navigator.storage?.persist) return;
+      try {
+        const granted = await navigator.storage.persist();
+        if (cancelled) return;
+        localStorage.setItem("pure-lift-storage-persist", granted ? "1" : "0");
+        document.documentElement.dataset.storagePersist = granted ? "granted" : "denied";
+        console.log(granted ? "WorldFit: almacenamiento persistente concedido" : "WorldFit: almacenamiento persistente no concedido");
+      } catch (error) {
+        if (cancelled) return;
+        localStorage.setItem("pure-lift-storage-persist", "0");
+        document.documentElement.dataset.storagePersist = "error";
+        console.warn("WorldFit: no se pudo solicitar almacenamiento persistente", error);
+      }
+    }
+
+    requestPersistence();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return <>{children}</>;

@@ -1,14 +1,25 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import { BarChart3, Flame, TrendingDown, TrendingUp, Zap } from "lucide-react";
 import type { ReactNode } from "react";
 import { MobileShell, TopAccent } from "@/components/mobile-shell";
-import { Card } from "@/components/ui";
+import { Card, SelectField } from "@/components/ui";
 import { BarChart } from "@/components/charts/bar-chart";
 import { LineChart } from "@/components/charts/line-chart";
 import { useAppStore } from "@/hooks/use-app-store";
-import { getMonthlyVolume, getYearlyVolume, groupVolumeByMuscle, stagnatingExercises, weekComparison, weeklyBuckets, monthlyBuckets, yearlyBuckets } from "@/utils/analytics";
-import { formatVolume } from "@/utils/format";
+import {
+  getMonthlyVolume,
+  getYearlyVolume,
+  groupVolumeByMuscle,
+  stagnatingExercises,
+  weekComparison,
+  weeklyBuckets,
+  monthlyBuckets,
+  yearlyBuckets,
+  progressByExercise
+} from "@/utils/analytics";
+import { formatVolume, formatKg } from "@/utils/format";
 
 export default function StatsPage() {
   const { state } = useAppStore();
@@ -17,6 +28,32 @@ export default function StatsPage() {
   const yearly = getYearlyVolume(state.sessions);
   const byGroup = groupVolumeByMuscle(state.sessions);
   const stagnating = stagnatingExercises(state.sessions);
+
+  const exerciseOptions = useMemo(() => {
+    const names = new Set<string>();
+    state.sessions.forEach((session) => session.entries.forEach((entry) => names.add(entry.exerciseName)));
+    return [...names].sort((a, b) => a.localeCompare(b, "es"));
+  }, [state.sessions]);
+
+  const [selectedExercise, setSelectedExercise] = useState("");
+
+  useEffect(() => {
+    if (!selectedExercise && exerciseOptions.length) {
+      setSelectedExercise(exerciseOptions[0]);
+    }
+    if (selectedExercise && !exerciseOptions.includes(selectedExercise) && exerciseOptions.length) {
+      setSelectedExercise(exerciseOptions[0]);
+    }
+  }, [exerciseOptions, selectedExercise]);
+
+  const exerciseProgress = useMemo(() => progressByExercise(state.sessions, selectedExercise), [state.sessions, selectedExercise]);
+  const progressChartData = exerciseProgress.map((point, index) => ({
+    label: new Date(point.date).toLocaleDateString("es-MX", { day: "2-digit", month: "short" }),
+    value: point.value
+  }));
+  const topValue = exerciseProgress.length ? Math.max(...exerciseProgress.map((point) => point.value)) : 0;
+  const latestValue = exerciseProgress.at(-1)?.value ?? 0;
+  const firstValue = exerciseProgress[0]?.value ?? 0;
 
   const groupData = Object.entries(byGroup)
     .filter(([, value]) => value > 0)
@@ -50,6 +87,39 @@ export default function StatsPage() {
               <Card className="p-4">
                 <div className="mb-3 text-sm font-semibold">Evolución anual</div>
                 <BarChart data={yearlyBuckets(state.sessions)} />
+              </Card>
+
+              <Card className="p-4">
+                <div className="mb-3 text-sm font-semibold">Progreso por ejercicio</div>
+                {exerciseOptions.length ? (
+                  <div className="space-y-3">
+                    <SelectField value={selectedExercise} onChange={(e) => setSelectedExercise(e.target.value)}>
+                      {exerciseOptions.map((exercise) => (
+                        <option key={exercise} value={exercise}>
+                          {exercise}
+                        </option>
+                      ))}
+                    </SelectField>
+
+                    {selectedExercise ? (
+                      <>
+                        <div className="grid grid-cols-3 gap-3 text-center">
+                          <MiniStat label="Inicio" value={formatKg(firstValue, state.settings.units)} />
+                          <MiniStat label="Actual" value={formatKg(latestValue, state.settings.units)} />
+                          <MiniStat label="Mejor" value={formatKg(topValue, state.settings.units)} />
+                        </div>
+                        <LineChart data={progressChartData.length ? progressChartData : [{ label: "Sin datos", value: 0 }]} />
+                        <div className="text-xs text-muted-foreground">
+                          La línea muestra la mejor estimación de 1RM para cada sesión donde apareció este ejercicio.
+                        </div>
+                      </>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-border bg-surface-2 p-4 text-sm text-muted-foreground">
+                    Aún no hay ejercicios suficientes para mostrar una evolución por nombre.
+                  </div>
+                )}
               </Card>
 
               <Card className="p-4">
@@ -97,8 +167,17 @@ function InfoCard({ icon, label, value, sub }: { icon: ReactNode; label: string;
           <div className="mt-2 text-lg font-bold">{value}</div>
           <div className="mt-1 text-xs text-muted-foreground">{sub}</div>
         </div>
-        <div className="rounded-full border border-border bg-surface-3 p-2 text-primary">{icon}</div>
+        <div className="rounded-full border border-border bg-surface-2 p-2 text-primary">{icon}</div>
       </div>
     </Card>
+  );
+}
+
+function MiniStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-border bg-surface-2 p-3">
+      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</div>
+      <div className="mt-2 text-lg font-bold">{value}</div>
+    </div>
   );
 }

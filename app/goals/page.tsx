@@ -20,6 +20,10 @@ export default function GoalsPage() {
 
   const createGoal = () => {
     if (!exerciseName.trim()) return;
+    if (!Number.isFinite(targetWeight) || targetWeight <= 0) {
+      window.alert("La meta debe ser mayor que 0.");
+      return;
+    }
     addGoal({
       exerciseName: exerciseName.trim(),
       muscleGroup,
@@ -27,6 +31,9 @@ export default function GoalsPage() {
       currentWeight,
       targetDate: new Date(targetDate).toISOString(),
     });
+    setExerciseName("");
+    setTargetWeight(0);
+    setCurrentWeight(0);
   };
 
   const activeGoals = state.goals.filter((goal) => !goal.completed);
@@ -41,7 +48,8 @@ export default function GoalsPage() {
             <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Activos</div>
             <div className="mt-3 space-y-3">
               {activeGoals.map((goal) => {
-                const progress = Math.min(100, Math.round((goal.currentWeight / goal.targetWeight) * 100));
+                const safeTarget = goal.targetWeight > 0 ? goal.targetWeight : 1;
+                const progress = Math.min(100, Math.max(0, Math.round((goal.currentWeight / safeTarget) * 100)));
                 return (
                   <div key={goal.id} className="rounded-2xl border border-border bg-surface-2 p-4">
                     <div className="flex items-start justify-between gap-3">
@@ -83,8 +91,11 @@ export default function GoalsPage() {
                 {groups.map((group) => <option key={group}>{group}</option>)}
               </SelectField>
               <div className="grid grid-cols-2 gap-3">
-                <Field label={`Meta (${state.settings.units})`} type="number" value={targetWeight} onChange={(e) => setTargetWeight(Number(e.target.value))} />
-                <Field label={`Actual (${state.settings.units})`} type="number" value={currentWeight} onChange={(e) => setCurrentWeight(Number(e.target.value))} />
+                <Field label={`Meta (${state.settings.units})`} type="number" min={0} step="0.1" value={targetWeight} onChange={(e) => setTargetWeight(Number(e.target.value))} />
+                <Field label={`Actual (${state.settings.units})`} type="number" min={0} step="0.1" value={currentWeight} onChange={(e) => setCurrentWeight(Number(e.target.value))} />
+              </div>
+              <div className="rounded-2xl border border-border bg-surface-2 p-3 text-xs text-muted-foreground">
+                La meta objetivo debe ser mayor que 0 para calcular el progreso correctamente.
               </div>
               <Field label="Fecha objetivo" type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} />
               <Button onClick={createGoal} className="gap-2">

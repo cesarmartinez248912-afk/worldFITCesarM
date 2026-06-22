@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search, Trash2, GitCompare } from "lucide-react";
+import { Trash2, GitCompare, Award } from "lucide-react";
 import { MobileShell, TopAccent } from "@/components/mobile-shell";
 import { Card, Field } from "@/components/ui";
 import { useAppStore } from "@/hooks/use-app-store";
@@ -53,11 +53,20 @@ export default function HistoryPage() {
                   {items.map((session) => {
                     const previous = previousSessionWithSameRoutine(session, state.sessions);
                     const compare = compareSessions(session, previous);
+                    const hasPR = session.entries.some((entry) => entry.isPersonalRecord);
                     return (
                       <Card key={session.id} className="p-4">
                         <div className="flex items-start justify-between gap-3">
                           <div>
-                            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">{session.routineName ?? "Entrenamiento"}</div>
+                            <div className="flex items-center gap-2">
+                              <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">{session.routineName ?? "Entrenamiento"}</div>
+                              {hasPR ? (
+                                <div className="inline-flex items-center gap-1 rounded-full border border-[rgba(255,179,181,0.40)] bg-[rgba(255,179,181,0.12)] px-2 py-1 text-[10px] font-semibold text-primary">
+                                  <Award className="h-3 w-3" />
+                                  ¡Nuevo récord!
+                                </div>
+                              ) : null}
+                            </div>
                             <div className="mt-1 text-lg font-semibold">{session.title}</div>
                             <div className="mt-1 text-sm text-muted-foreground">{formatDateTime(session.startedAt)} · {formatDuration(session.durationMinutes)}</div>
                           </div>
@@ -78,8 +87,16 @@ export default function HistoryPage() {
                         <div className="mt-4 space-y-2">
                           {session.entries.map((entry) => (
                             <div key={entry.id} className="flex items-center justify-between rounded-2xl bg-surface-2 px-4 py-3 text-sm">
-                              <div>
-                                <div className="font-semibold">{entry.exerciseName}</div>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <div className="font-semibold">{entry.exerciseName}</div>
+                                  {entry.isPersonalRecord ? (
+                                    <span className="inline-flex items-center gap-1 rounded-full border border-[rgba(255,179,181,0.40)] bg-[rgba(255,179,181,0.12)] px-2 py-0.5 text-[10px] font-semibold text-primary">
+                                      <Award className="h-3 w-3" />
+                                      PR
+                                    </span>
+                                  ) : null}
+                                </div>
                                 <div className="text-xs text-muted-foreground">{entry.muscleGroup}</div>
                               </div>
                               <div className="text-right text-muted-foreground">

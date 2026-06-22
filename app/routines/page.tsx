@@ -492,23 +492,36 @@ export default function RoutinesPage() {
                           Añadir
                         </Button>
                       </div>
-                      {newItemAlternateExercises.length ? (
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {newItemAlternateExercises.map((exercise) => (
-                            <span key={exercise} className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-xs font-semibold text-foreground">
-                              {exercise}
-                              <button
-                                type="button"
-                                className="text-muted-foreground transition hover:text-foreground"
-                                onClick={() => removeNewItemAlternativeExercise(exercise)}
-                                aria-label={`Eliminar variante ${exercise}`}
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
+                      {newItemAlternateExercises.length ? (() => {
+                        const preview = newItemAlternateExercises.slice(0, 3);
+                        const remaining = newItemAlternateExercises.length - preview.length;
+                        return (
+                          <div className="mt-3 rounded-2xl border border-border bg-surface px-3 py-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="text-xs font-semibold text-muted-foreground">Variantes guardadas</div>
+                              <div className="rounded-full border border-border bg-surface-2 px-2.5 py-1 text-[10px] font-semibold text-muted-foreground">{newItemAlternateExercises.length}</div>
+                            </div>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {preview.map((exercise) => (
+                                <span key={exercise} className="inline-flex max-w-full items-center gap-2 rounded-full border border-border bg-background px-3 py-1 text-xs font-semibold text-foreground">
+                                  <span className="max-w-[170px] truncate">{exercise}</span>
+                                  <button
+                                    type="button"
+                                    className="text-muted-foreground transition hover:text-foreground"
+                                    onClick={() => removeNewItemAlternativeExercise(exercise)}
+                                    aria-label={`Eliminar variante ${exercise}`}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </span>
+                              ))}
+                              {remaining > 0 ? (
+                                <span className="inline-flex items-center rounded-full border border-dashed border-border bg-surface-2 px-3 py-1 text-xs font-semibold text-muted-foreground">+{remaining} más</span>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })() : (
                         <div className="mt-3 text-xs text-muted-foreground">Todavía no agregas variantes.</div>
                       )}
                     </div>

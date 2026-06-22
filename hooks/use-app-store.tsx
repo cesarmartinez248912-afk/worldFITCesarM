@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import type { AppSettings, AppState, Goal, MuscleGroup, RoutineTemplate, ScheduledDay, WeekDay, WeekSchedule, WorkoutSession } from "@/types";
 import { createId } from "@/utils/id";
 import { buildWeekSchedule, getLocalWeekDay, getLocalWeekStart } from "@/utils/schedule";
-import { loadOrSeedState, saveState } from "@/storage/idb";
+import { loadOrSeedState, saveState, normalizeImportedState } from "@/storage/idb";
 import { seededState } from "@/storage/seed";
 
 type RoutineInput = Omit<RoutineTemplate, "id" | "createdAt" | "updatedAt"> & { id?: string };
@@ -24,6 +24,7 @@ type StoreContextValue = {
   upsertRoutine: (routine: RoutineInput) => string;
   deleteRoutine: (id: string) => void;
   updateSettings: (patch: Partial<AppSettings>) => void;
+  replaceState: (next: AppState) => void;
   upsertWeekSchedule: (schedule: WeekScheduleInput) => string;
   updateScheduledDay: (scheduleId: string, weekDay: WeekDay, patch: Partial<ScheduledDay>) => void;
   markDayMissed: (scheduleId: string, weekDay: WeekDay) => void;
@@ -42,7 +43,7 @@ function withDefaults(state: AppState): AppState {
   return {
     ...seededState,
     ...state,
-    settings: { ...seededState.settings, ...state.settings, activeRoutineId },
+    settings: { ...seededState.settings, ...state.settings, activeRoutineId, lastBackupExportAt: state.settings?.lastBackupExportAt },
     exercises: state.exercises?.length ? state.exercises : seededState.exercises,
     routines,
     sessions: state.sessions ?? [],
@@ -156,11 +157,41 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       });
     },
     deleteSession: (id) => {
-      setState((current) => ({
-        ...current,
-        sessions: current.sessions.filter((session) => session.id !== id),
-        lastUpdated: new Date().toISOString()
-      }));
+      setState((current) => {
+        const sessionToDelete = current.sessions.find((session) => session.id === id);
+        if (!sessionToDelete) {
+          return {
+            ...current,
+            lastUpdated: new Date().toISOString()
+          };
+        }
+
+        const sessions = current.sessions.filter((session) => session.id !== id);
+        const shouldRevertSchedule = Boolean(sessionToDelete.routineId && sessionToDelete.routineDay);
+
+        const weekSchedules = shouldRevertSchedule
+          ? current.weekSchedules.map((schedule) => {
+              if (schedule.routineId !== sessionToDelete.routineId) return schedule;
+              const matchedSessionDay = schedule.days.find((day) => day.routineDay === sessionToDelete.routineDay && day.sessionId === id);
+              if (!matchedSessionDay) return schedule;
+              return {
+                ...schedule,
+                days: schedule.days.map((day) =>
+                  day.routineDay === sessionToDelete.routineDay && day.sessionId === id
+                    ? { ...day, status: "pending" as const, sessionId: undefined, missedAt: undefined }
+                    : day
+                )
+              };
+            })
+          : current.weekSchedules;
+
+        return {
+          ...current,
+          sessions,
+          weekSchedules,
+          lastUpdated: new Date().toISOString()
+        };
+      });
     },
     addGoal: (goal) => {
       setState((current) => ({
@@ -293,6 +324,10 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     },
     markDaySkipped: (scheduleId, weekDay) => {
       setState((current) => applyScheduledDayPatch(current, scheduleId, weekDay, { status: "skipped" }));
+    },
+    replaceState: (next) => {
+      const normalized = normalizeImportedState(next) ?? { ...seededState, lastUpdated: new Date().toISOString() };
+      setState(withDefaults(normalized));
     },
     resetData: () => {
       setState({ ...seededState, lastUpdated: new Date().toISOString() });

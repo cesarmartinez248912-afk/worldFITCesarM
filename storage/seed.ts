@@ -1,7 +1,7 @@
 import type { AppState } from "@/types";
 
 export const seededState: AppState = {
-  schemaVersion: 3,
+  schemaVersion: 4,
   exercises: [],
   routines: [],
   goals: [],
@@ -11,7 +11,8 @@ export const seededState: AppState = {
     theme: "dark",
     units: "kg",
     notifications: true,
-    activeRoutineId: undefined
+    activeRoutineId: undefined,
+    lastBackupExportAt: undefined
   },
   lastUpdated: new Date().toISOString()
 };

@@ -81,6 +81,8 @@ export interface WorkoutEntry {
   sets: number;
   restSeconds?: number;
   notes?: string;
+  isPersonalRecord?: boolean;
+  personalRecordValue?: number;
 }
 
 export interface WorkoutSession {
@@ -112,6 +114,7 @@ export interface AppSettings {
   units: UnitSystem;
   notifications: boolean;
   activeRoutineId?: string;
+  lastBackupExportAt?: string;
 }
 
 export interface AppState {

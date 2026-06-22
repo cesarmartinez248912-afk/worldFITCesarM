@@ -9,7 +9,7 @@ import { ModalTopBar } from "@/components/top-bar";
 import { useAppStore } from "@/hooks/use-app-store";
 import { createId } from "@/utils/id";
 import type { MuscleGroup, WorkoutEntry, WorkoutSession } from "@/types";
-import { compareSessions, previousSessionWithSameRoutine, sortSessionsNewestFirst } from "@/utils/analytics";
+import { compareSessions, estimateOneRepMax, previousSessionWithSameRoutine, sortSessionsNewestFirst } from "@/utils/analytics";
 import { formatKg, formatVolume } from "@/utils/format";
 import { getLocalISOString, getLocalWeekDay } from "@/utils/schedule";
 
@@ -106,7 +106,7 @@ export default function RegisterPage() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [weightPromptOpen, setWeightPromptOpen] = useState(false);
   const [weightInput, setWeightInput] = useState("");
-  const [restTimer, setRestTimer] = useState<{ secondsLeft: number; nextIndex: number; nextExerciseName: string } | null>(null);
+  const [restTimer, setRestTimer] = useState<{ secondsLeft: number; nextIndex: number; nextExerciseName: string; endsAt: number } | null>(null);
   const workoutStartTimeRef = useRef<number>(0);
 
   useEffect(() => {
@@ -260,16 +260,52 @@ export default function RegisterPage() {
 
   useEffect(() => {
     if (!restTimer) return;
-    if (restTimer.secondsLeft <= 0) {
+
+    const finishRest = () => {
+      try {
+        if (navigator.vibrate) navigator.vibrate([120, 80, 120]);
+      } catch {
+        // Silencioso: no todas las plataformas soportan vibración.
+      }
+
+      try {
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioContextClass) {
+          const audioContext = new AudioContextClass();
+          const oscillator = audioContext.createOscillator();
+          const gain = audioContext.createGain();
+          oscillator.type = "sine";
+          oscillator.frequency.value = 880;
+          oscillator.connect(gain);
+          gain.connect(audioContext.destination);
+          gain.gain.setValueAtTime(0.0001, audioContext.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.2, audioContext.currentTime + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.24);
+          oscillator.start();
+          oscillator.stop(audioContext.currentTime + 0.25);
+          oscillator.onended = () => audioContext.close().catch(() => {});
+        }
+      } catch {
+        // Silencioso: el sonido puede estar bloqueado por el navegador.
+      }
+
       setActiveIndex(restTimer.nextIndex);
       setRestTimer(null);
-      return;
-    }
-    const timeout = window.setTimeout(() => {
-      setRestTimer((current) => (current ? { ...current, secondsLeft: current.secondsLeft - 1 } : current));
-    }, 1000);
-    return () => window.clearTimeout(timeout);
-  }, [restTimer]);
+    };
+
+    const update = () => {
+      const secondsLeft = Math.max(0, Math.ceil((restTimer.endsAt - Date.now()) / 1000));
+      if (secondsLeft <= 0) {
+        finishRest();
+        return;
+      }
+      setRestTimer((current) => (current ? { ...current, secondsLeft } : current));
+    };
+
+    update();
+    const interval = window.setInterval(update, 250);
+    return () => window.clearInterval(interval);
+  }, [restTimer?.endsAt, restTimer?.nextIndex]);
 
   const openFinishPrompt = () => {
     if (!currentExercise) return;
@@ -292,7 +328,17 @@ export default function RegisterPage() {
     if (!currentExercise) return;
     const kg = Number(weightInput);
     if (!Number.isFinite(kg) || kg < 0) return;
-    const finished = { ...currentExercise, weight: kg };
+    const currentScore = estimateOneRepMax(kg, currentExercise.reps);
+    const previousBest = Math.max(
+      0,
+      ...state.sessions.flatMap((session) =>
+        session.entries
+          .filter((entry) => entry.exerciseName.toLowerCase() === currentExercise.exerciseName.toLowerCase())
+          .map((entry) => estimateOneRepMax(entry.weight, entry.reps))
+      )
+    );
+    const isPersonalRecord = currentScore > previousBest;
+    const finished = { ...currentExercise, weight: kg, isPersonalRecord, personalRecordValue: isPersonalRecord ? currentScore : undefined };
     const nextIndex = activeIndex + 1;
     const rest = currentExercise.restSeconds ?? 60;
     setCompletedEntries((current) => [...current, finished]);
@@ -303,6 +349,7 @@ export default function RegisterPage() {
         secondsLeft: rest,
         nextIndex,
         nextExerciseName: pendingEntries[nextIndex]?.exerciseName ?? "Siguiente ejercicio",
+        endsAt: Date.now() + rest * 1000,
       });
     } else {
       setActiveIndex(nextIndex);
@@ -338,6 +385,7 @@ export default function RegisterPage() {
     const durationMinutes = Math.max(1, Math.round((Date.now() - startedMillis) / 60000));
     addSession({
       ...draftSession,
+      entries: completedEntries,
       completedAt: new Date().toISOString(),
       durationMinutes,
     });
@@ -634,10 +682,23 @@ export default function RegisterPage() {
           )}
 
           <div className="mt-4 space-y-2">
+            {completedEntries.some((entry) => entry.isPersonalRecord) ? (
+              <div className="rounded-2xl border border-[rgba(255,179,181,0.35)] bg-[rgba(255,179,181,0.10)] px-4 py-3 text-sm font-semibold text-primary">
+                ¡Nuevo récord detectado en esta sesión!
+              </div>
+            ) : null}
             {completedEntries.map((entry, index) => (
               <div key={entry.id} className="flex items-center justify-between rounded-2xl bg-surface-2 px-4 py-3 text-sm">
-                <div>
-                  <div className="font-semibold">{index + 1}. {entry.exerciseName}</div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <div className="font-semibold">{index + 1}. {entry.exerciseName}</div>
+                    {entry.isPersonalRecord ? (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-[rgba(255,179,181,0.40)] bg-[rgba(255,179,181,0.12)] px-2 py-0.5 text-[10px] font-semibold text-primary">
+                        <Sparkles className="h-3 w-3" />
+                        ¡Nuevo récord!
+                      </span>
+                    ) : null}
+                  </div>
                   <div className="text-xs text-muted-foreground">{entry.muscleGroup}</div>
                 </div>
                 <div className="text-right text-muted-foreground">
