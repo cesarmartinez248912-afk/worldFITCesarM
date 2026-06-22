@@ -13,6 +13,33 @@ export type MuscleGroup =
   | "Full Body"
   | "Otro";
 
+export type WeekDay =
+  | "Lunes"
+  | "Martes"
+  | "Miércoles"
+  | "Jueves"
+  | "Viernes"
+  | "Sábado"
+  | "Domingo";
+
+export type ScheduledDayStatus = "pending" | "done" | "missed" | "skipped";
+
+export interface ScheduledDay {
+  weekDay: WeekDay;
+  routineDay: string;
+  status: ScheduledDayStatus;
+  sessionId?: string;
+  missedAt?: string;
+}
+
+export interface WeekSchedule {
+  id: string;
+  routineId: string;
+  weekStart: string;
+  days: ScheduledDay[];
+  createdAt: string;
+}
+
 export interface Exercise {
   id: string;
   name: string;
@@ -21,7 +48,6 @@ export interface Exercise {
   isCustom?: boolean;
 }
 
-// FIX 10: RoutineItem ya no expone weight; ese dato pertenece a WorkoutEntry.
 export interface RoutineItem {
   id: string;
   dayLabel: string;
@@ -41,6 +67,7 @@ export interface RoutineTemplate {
   createdAt: string;
   updatedAt: string;
   items: RoutineItem[];
+  scheduledWeekDays?: Partial<Record<string, WeekDay>>;
 }
 
 export interface WorkoutEntry {
@@ -92,6 +119,7 @@ export interface AppState {
   routines: RoutineTemplate[];
   sessions: WorkoutSession[];
   goals: Goal[];
+  weekSchedules: WeekSchedule[];
   settings: AppSettings;
   lastUpdated: string;
 }

@@ -2,12 +2,15 @@
 
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import type { AppSettings, AppState, Goal, MuscleGroup, RoutineTemplate, WorkoutSession } from "@/types";
+import type { AppSettings, AppState, Goal, MuscleGroup, RoutineTemplate, ScheduledDay, WeekDay, WeekSchedule, WorkoutSession } from "@/types";
 import { createId } from "@/utils/id";
+import { buildWeekSchedule, getLocalWeekDay, getLocalWeekStart } from "@/utils/schedule";
 import { loadOrSeedState, saveState } from "@/storage/idb";
 import { seededState } from "@/storage/seed";
 
 type RoutineInput = Omit<RoutineTemplate, "id" | "createdAt" | "updatedAt"> & { id?: string };
+
+type WeekScheduleInput = Omit<WeekSchedule, "id" | "createdAt"> & { id?: string };
 
 type StoreContextValue = {
   state: AppState;
@@ -21,6 +24,10 @@ type StoreContextValue = {
   upsertRoutine: (routine: RoutineInput) => string;
   deleteRoutine: (id: string) => void;
   updateSettings: (patch: Partial<AppSettings>) => void;
+  upsertWeekSchedule: (schedule: WeekScheduleInput) => string;
+  updateScheduledDay: (scheduleId: string, weekDay: WeekDay, patch: Partial<ScheduledDay>) => void;
+  markDayMissed: (scheduleId: string, weekDay: WeekDay) => void;
+  markDaySkipped: (scheduleId: string, weekDay: WeekDay) => void;
   resetData: () => void;
 };
 
@@ -40,6 +47,36 @@ function withDefaults(state: AppState): AppState {
     routines,
     sessions: state.sessions ?? [],
     goals: state.goals ?? [],
+    weekSchedules: state.weekSchedules ?? [],
+  };
+}
+
+function mergeScheduleDays(existing: WeekSchedule, next: WeekScheduleInput): ScheduledDay[] {
+  const existingByWeekDay = new Map(existing.days.map((day) => [day.weekDay, day] as const));
+  return next.days.map((day) => {
+    const current = existingByWeekDay.get(day.weekDay);
+    if (!current) return { ...day };
+    return {
+      ...day,
+      ...current,
+      routineDay: day.routineDay,
+    };
+  });
+}
+
+function applyScheduledDayPatch(current: AppState, scheduleId: string, weekDay: WeekDay, patch: Partial<ScheduledDay>): AppState {
+  return {
+    ...current,
+    weekSchedules: current.weekSchedules.map((schedule) => {
+      if (schedule.id !== scheduleId) return schedule;
+      const found = schedule.days.some((day) => day.weekDay === weekDay);
+      if (!found) return schedule;
+      return {
+        ...schedule,
+        days: schedule.days.map((day) => (day.weekDay === weekDay ? { ...day, ...patch } : day))
+      };
+    }),
+    lastUpdated: new Date().toISOString()
   };
 }
 
@@ -87,11 +124,36 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       });
     },
     addSession: (session) => {
-      setState((current) => ({
-        ...current,
-        sessions: [{ ...session, id: createId("sess") }, ...current.sessions],
-        lastUpdated: new Date().toISOString()
-      }));
+      const sessionId = createId("sess");
+      const now = new Date().toISOString();
+      setState((current) => {
+        const nextSession = { ...session, id: sessionId };
+        const startedAt = new Date(session.startedAt);
+        const sessionWeekStart = session.routineId ? getLocalWeekStart(startedAt) : null;
+        const sessionWeekDay = session.routineId ? getLocalWeekDay(startedAt) : null;
+        const weekSchedules = session.routineId && sessionWeekStart && sessionWeekDay
+          ? current.weekSchedules.map((schedule) => {
+              if (schedule.routineId !== session.routineId || schedule.weekStart !== sessionWeekStart) return schedule;
+              const matched = schedule.days.some((day) => day.weekDay === sessionWeekDay);
+              if (!matched) return schedule;
+              return {
+                ...schedule,
+                days: schedule.days.map((day) => (
+                  day.weekDay === sessionWeekDay
+                    ? { ...day, status: "done" as const, sessionId, missedAt: undefined }
+                    : day
+                ))
+              };
+            })
+          : current.weekSchedules;
+
+        return {
+          ...current,
+          sessions: [nextSession, ...current.sessions],
+          weekSchedules,
+          lastUpdated: now
+        };
+      });
     },
     deleteSession: (id) => {
       setState((current) => ({
@@ -127,11 +189,22 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       setState((current) => {
         const exists = current.routines.some((item) => item.id === id);
         const previous = current.routines.find((item) => item.id === id);
-        const nextRoutine = {
+        const nextRoutine: RoutineTemplate = {
           id,
           name: routine.name.trim() || "Rutina nueva",
           description: routine.description.trim() || "Rutina personalizada",
-          items: routine.items.map((item) => ({ ...item, id: item.id || createId("ri") })).sort((a, b) => a.order - b.order),
+          items: routine.items.map((item) => ({
+            id: item.id || createId("ri"),
+            dayLabel: item.dayLabel,
+            exerciseName: item.exerciseName,
+            muscleGroup: item.muscleGroup,
+            reps: item.reps,
+            sets: item.sets,
+            restSeconds: item.restSeconds,
+            order: item.order,
+            notes: item.notes,
+          })).sort((a, b) => a.order - b.order),
+          scheduledWeekDays: routine.scheduledWeekDays && Object.keys(routine.scheduledWeekDays).length ? { ...routine.scheduledWeekDays } : undefined,
           createdAt: exists ? previous?.createdAt ?? now : now,
           updatedAt: now
         };
@@ -150,10 +223,12 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     deleteRoutine: (id) => {
       setState((current) => {
         const routines = current.routines.filter((routine) => routine.id !== id);
+        const weekSchedules = current.weekSchedules.filter((schedule) => schedule.routineId !== id);
         const fallback = current.settings.activeRoutineId === id ? routines[0]?.id : current.settings.activeRoutineId;
         return {
           ...current,
           routines,
+          weekSchedules,
           settings: { ...current.settings, activeRoutineId: fallback },
           lastUpdated: new Date().toISOString()
         };
@@ -165,6 +240,53 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         settings: { ...current.settings, ...patch },
         lastUpdated: new Date().toISOString()
       }));
+    },
+    upsertWeekSchedule: (schedule) => {
+      let finalId = createId("ws");
+      setState((current) => {
+        const existing = current.weekSchedules.find((item) => item.routineId === schedule.routineId && item.weekStart === schedule.weekStart);
+        if (existing) {
+          finalId = existing.id;
+          return {
+            ...current,
+            weekSchedules: current.weekSchedules.map((item) => (
+              item.id === existing.id
+                ? {
+                    ...item,
+                    routineId: schedule.routineId,
+                    weekStart: schedule.weekStart,
+                    days: mergeScheduleDays(item, schedule),
+                  }
+                : item
+            )),
+            lastUpdated: new Date().toISOString()
+          };
+        }
+        return {
+          ...current,
+          weekSchedules: [
+            {
+              id: finalId,
+              routineId: schedule.routineId,
+              weekStart: schedule.weekStart,
+              days: schedule.days.map((day) => ({ ...day })),
+              createdAt: new Date().toISOString()
+            },
+            ...current.weekSchedules
+          ],
+          lastUpdated: new Date().toISOString()
+        };
+      });
+      return finalId;
+    },
+    updateScheduledDay: (scheduleId, weekDay, patch) => {
+      setState((current) => applyScheduledDayPatch(current, scheduleId, weekDay, patch));
+    },
+    markDayMissed: (scheduleId, weekDay) => {
+      setState((current) => applyScheduledDayPatch(current, scheduleId, weekDay, { status: "missed", missedAt: new Date().toISOString() }));
+    },
+    markDaySkipped: (scheduleId, weekDay) => {
+      setState((current) => applyScheduledDayPatch(current, scheduleId, weekDay, { status: "skipped" }));
     },
     resetData: () => {
       setState({ ...seededState, lastUpdated: new Date().toISOString() });

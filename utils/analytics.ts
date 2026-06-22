@@ -1,54 +1,6 @@
-import type { AppState, DashboardSummary, ExerciseProgressPoint, Goal, MuscleGroup, PeriodComparison, WorkoutEntry, WorkoutSession } from "@/types";
+import type { AppState, DashboardSummary, ExerciseProgressPoint, Goal, MuscleGroup, PeriodComparison, RoutineTemplate, WorkoutEntry, WorkoutSession } from "@/types";
 
 const GROUPS: MuscleGroup[] = ["Pecho", "Espalda", "Pierna", "Hombros", "Bíceps", "Tríceps", "Core", "Cardio", "Full Body", "Otro"];
-const TRAINING_LEVELS = [
-  { min: 0, title: "Novato", description: "Empieza a construir el hábito." },
-  { min: 5, title: "Activo", description: "Ya estás sumando sesiones con regularidad." },
-  { min: 15, title: "Constante", description: "Tu progreso ya empieza a notarse." },
-  { min: 30, title: "Avanzado", description: "Llevas bastante trabajo acumulado." },
-  { min: 60, title: "Fuerte", description: "Entrenas con muy buen ritmo." },
-  { min: 100, title: "Elite", description: "Nivel alto de constancia y volumen." },
-] as const;
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
-
-function sessionTime(session: WorkoutSession): number {
-  return new Date(session.startedAt).getTime();
-}
-
-function sessionsInRange(sessions: WorkoutSession[], start: Date, end: Date): WorkoutSession[] {
-  const startMs = start.getTime();
-  const endMs = end.getTime();
-  return sessions.filter((session) => {
-    const time = sessionTime(session);
-    return time >= startMs && time <= endMs;
-  });
-}
-
-function periodStats(sessions: WorkoutSession[], start: Date, end: Date): { volume: number; reps: number; sets: number } {
-  let volume = 0;
-  let reps = 0;
-  let sets = 0;
-  const startMs = start.getTime();
-  const endMs = end.getTime();
-  for (const session of sessions) {
-    const time = sessionTime(session);
-    if (time < startMs || time > endMs) continue;
-    volume += sessionVolume(session);
-    reps += sessionReps(session);
-    sets += sessionSets(session);
-  }
-  return { volume, reps, sets };
-}
-
-function scoreLabel(score: number, thresholds: [number, number, number]): string {
-  if (score >= thresholds[2]) return "Muy alta";
-  if (score >= thresholds[1]) return "Alta";
-  if (score >= thresholds[0]) return "Moderada";
-  return "Baja";
-}
 
 export function entryVolume(entry: WorkoutEntry): number {
   return entry.weight * entry.reps * entry.sets;
@@ -91,15 +43,30 @@ export function getWeeklyRange(now = new Date()): { start: Date; end: Date; prev
 }
 
 function periodVolume(sessions: WorkoutSession[], start: Date, end: Date): number {
-  return periodStats(sessions, start, end).volume;
+  return sessions
+    .filter((session) => {
+      const time = new Date(session.startedAt).getTime();
+      return time >= start.getTime() && time <= end.getTime();
+    })
+    .reduce((total, session) => total + sessionVolume(session), 0);
 }
 
 function periodReps(sessions: WorkoutSession[], start: Date, end: Date): number {
-  return periodStats(sessions, start, end).reps;
+  return sessions
+    .filter((session) => {
+      const time = new Date(session.startedAt).getTime();
+      return time >= start.getTime() && time <= end.getTime();
+    })
+    .reduce((total, session) => total + sessionReps(session), 0);
 }
 
 function periodSets(sessions: WorkoutSession[], start: Date, end: Date): number {
-  return periodStats(sessions, start, end).sets;
+  return sessions
+    .filter((session) => {
+      const time = new Date(session.startedAt).getTime();
+      return time >= start.getTime() && time <= end.getTime();
+    })
+    .reduce((total, session) => total + sessionSets(session), 0);
 }
 
 function periodComparison(current: number, previous: number): PeriodComparison {
@@ -115,12 +82,10 @@ export function weekComparison(sessions: WorkoutSession[], now = new Date()): {
   label: string;
 } {
   const { start, end, previousStart, previousEnd } = getWeeklyRange(now);
-  const current = periodStats(sessions, start, end);
-  const previous = periodStats(sessions, previousStart, previousEnd);
   return {
-    volume: periodComparison(current.volume, previous.volume),
-    reps: periodComparison(current.reps, previous.reps),
-    sets: periodComparison(current.sets, previous.sets),
+    volume: periodComparison(periodVolume(sessions, start, end), periodVolume(sessions, previousStart, previousEnd)),
+    reps: periodComparison(periodReps(sessions, start, end), periodReps(sessions, previousStart, previousEnd)),
+    sets: periodComparison(periodSets(sessions, start, end), periodSets(sessions, previousStart, previousEnd)),
     label: `${start.toLocaleDateString("es-MX", { day: "2-digit", month: "short" })} - ${end.toLocaleDateString("es-MX", { day: "2-digit", month: "short" })}`
   };
 }
@@ -170,22 +135,22 @@ export function bestExerciseName(sessions: WorkoutSession[]): string {
 }
 
 export function latestPRLabel(sessions: WorkoutSession[]): string {
-  const sorted = [...sessions].sort((a, b) => +new Date(a.startedAt) - +new Date(b.startedAt));
-  const allTimeBest: Record<string, number> = {};
-  let latestPR = "";
+  const sorted = sortSessionsNewestFirst(sessions);
+  let latest = "";
+  let latestScore = 0;
+  const previousBest: Record<string, number> = {};
   for (const session of sorted) {
     for (const entry of session.entries) {
       const score = estimateOneRepMax(entry.weight, entry.reps);
-      const prevBest = allTimeBest[entry.exerciseName] ?? 0;
-      if (score > prevBest) {
-        allTimeBest[entry.exerciseName] = score;
-        latestPR = `${entry.exerciseName} · ${Math.round(score)} kg 1RM`;
-      } else {
-        allTimeBest[entry.exerciseName] = Math.max(prevBest, score);
+      const prev = previousBest[entry.exerciseName] ?? 0;
+      if (score > prev && score >= latestScore) {
+        latestScore = score;
+        latest = `${entry.exerciseName} · ${Math.round(score)} kg 1RM`;
       }
+      previousBest[entry.exerciseName] = Math.max(prev, score);
     }
   }
-  return latestPR || "Sin récord reciente";
+  return latest || "Sin récord reciente";
 }
 
 export function latestSession(sessions: WorkoutSession[]): WorkoutSession | undefined {
@@ -244,12 +209,12 @@ export function weeklyBuckets(sessions: WorkoutSession[], bucketCount = 7): { la
     return { date, value: 0 };
   });
   for (const session of sessions) {
-    const dt = new Date(session.startedAt);
+    const time = new Date(session.startedAt).getTime();
     for (const bucket of buckets) {
       const sameDay =
-        bucket.date.getFullYear() === dt.getFullYear() &&
-        bucket.date.getMonth() === dt.getMonth() &&
-        bucket.date.getDate() === dt.getDate();
+        bucket.date.getFullYear() === new Date(time).getFullYear() &&
+        bucket.date.getMonth() === new Date(time).getMonth() &&
+        bucket.date.getDate() === new Date(time).getDate();
       if (sameDay) {
         bucket.value += sessionVolume(session);
       }
@@ -318,145 +283,6 @@ export function stagnatingExercises(sessions: WorkoutSession[]): string[] {
     if (last <= prevMax) stagnant.push(name);
   }
   return stagnant.slice(0, 3);
-}
-
-export function trainingLevelSummary(sessions: WorkoutSession[]): {
-  level: number;
-  title: string;
-  description: string;
-  sessions: number;
-  progress: number;
-  nextSessions: number | null;
-  badge: string;
-} {
-  const sessionsCount = sessions.length;
-  let index = 0;
-  for (let i = 0; i < TRAINING_LEVELS.length; i += 1) {
-    if (sessionsCount >= TRAINING_LEVELS[i].min) index = i;
-  }
-  const current = TRAINING_LEVELS[index];
-  const next = TRAINING_LEVELS[index + 1] ?? null;
-  const currentFloor = current.min;
-  const progress = next ? clamp((sessionsCount - currentFloor) / (next.min - currentFloor), 0, 1) : 1;
-  return {
-    level: index + 1,
-    title: current.title,
-    description: current.description,
-    sessions: sessionsCount,
-    progress,
-    nextSessions: next ? Math.max(0, next.min - sessionsCount) : null,
-    badge: `Nivel ${index + 1}`,
-  };
-}
-
-export function fatigueRecoverySummary(sessions: WorkoutSession[], now = new Date()): {
-  hasData: boolean;
-  fatigueScore: number;
-  recoveryScore: number;
-  fatigueLabel: string;
-  recoveryLabel: string;
-  message: string;
-  daysSinceLast: number | null;
-  recentSessions: number;
-} {
-  if (!sessions.length) {
-    return {
-      hasData: false,
-      fatigueScore: 0,
-      recoveryScore: 0,
-      fatigueLabel: "Sin datos",
-      recoveryLabel: "Sin datos",
-      message: "Registra tu primera sesión para ver fatiga y recuperación.",
-      daysSinceLast: null,
-      recentSessions: 0,
-    };
-  }
-
-  const recentStart = new Date(now);
-  recentStart.setDate(now.getDate() - 6);
-  recentStart.setHours(0, 0, 0, 0);
-  const previousStart = new Date(now);
-  previousStart.setDate(now.getDate() - 13);
-  previousStart.setHours(0, 0, 0, 0);
-  const previousEnd = new Date(recentStart);
-  previousEnd.setMilliseconds(-1);
-
-  const recent = periodStats(sessions, recentStart, now);
-  const previous = periodStats(sessions, previousStart, previousEnd);
-  const recentSessions = sessionsInRange(sessions, recentStart, now).length;
-  const latest = latestSession(sessions);
-  const daysSinceLast = latest ? Math.max(0, Math.floor((now.getTime() - sessionTime(latest)) / 86400000)) : null;
-  const volumeRatio = previous.volume > 0 ? recent.volume / previous.volume : recent.volume > 0 ? 1.15 : 0;
-
-  const fatigueScore = clamp(Math.round(18 + recentSessions * 12 + Math.max(0, volumeRatio - 1) * 28 - Math.min(daysSinceLast ?? 0, 7) * 5), 0, 100);
-  const recoveryScore = clamp(Math.round(100 - fatigueScore + Math.min((daysSinceLast ?? 0) * 6, 30)), 0, 100);
-
-  const fatigueLabel = scoreLabel(fatigueScore, [25, 50, 75]);
-  const recoveryLabel = recoveryScore >= 75 ? "Muy buena" : recoveryScore >= 50 ? "Buena" : recoveryScore >= 25 ? "Regular" : "Baja";
-  const message =
-    fatigueScore >= 70
-      ? "Tu carga reciente es alta. Baja un poco el volumen o toma un día extra de descanso."
-      : recoveryScore >= 70
-        ? "Estás bastante recuperado; hoy puedes apretar un poco más."
-        : recentSessions >= 3
-          ? "Vas en un punto medio: cuida la técnica y sube solo un poco si te sientes bien."
-          : "Todavía tienes margen para meter más trabajo esta semana.";
-
-  return {
-    hasData: true,
-    fatigueScore,
-    recoveryScore,
-    fatigueLabel,
-    recoveryLabel,
-    message,
-    daysSinceLast,
-    recentSessions,
-  };
-}
-
-export function progressCoachSummary(state: AppState, now = new Date()): { title: string; message: string; action: string } {
-  const level = trainingLevelSummary(state.sessions);
-  const load = fatigueRecoverySummary(state.sessions, now);
-  const stagnant = stagnatingExercises(state.sessions);
-  const recentPR = latestPRLabel(state.sessions);
-
-  if (!state.sessions.length) {
-    return {
-      title: "Empieza la base",
-      message: "Guarda tu primera sesión para que el coach te sugiera cómo avanzar.",
-      action: "Haz 2-3 sesiones esta semana y registra tus pesos.",
-    };
-  }
-
-  if (load.hasData && load.fatigueScore >= 70 && load.recoveryScore <= 45) {
-    return {
-      title: "Toca descargar",
-      message: "Tu carga reciente está alta y la recuperación va baja.",
-      action: "Reduce el volumen 10-20% o deja un día extra de descanso.",
-    };
-  }
-
-  if (stagnant.length) {
-    return {
-      title: "Ajusta la progresión",
-      message: `${stagnant[0]} se está quedando igual en tus últimas sesiones.`,
-      action: "Prueba +1 rep o +2.5 kg en ese ejercicio la próxima vez.",
-    };
-  }
-
-  if (level.nextSessions !== null && level.progress >= 0.75) {
-    return {
-      title: "Casi subes de nivel",
-      message: `Te faltan ${level.nextSessions} sesiones para llegar a ${TRAINING_LEVELS[level.level]?.title ?? "el siguiente nivel"}.`,
-      action: "Mantén el ritmo y conserva la constancia.",
-    };
-  }
-
-  return {
-    title: "Vas bien",
-    message: recentPR === "Sin récord reciente" ? "Tu progreso es estable y la base está sólida." : `Último récord detectado: ${recentPR}.`,
-    action: "Busca una mejora pequeña en tu próximo entrenamiento.",
-  };
 }
 
 export function appSummary(state: AppState): DashboardSummary {

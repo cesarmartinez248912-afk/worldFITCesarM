@@ -33,7 +33,8 @@ function AuthProvider({ children }: { children: ReactNode }) {
       const session = getSessionStorage();
       const isAuthenticated = session?.getItem(LOGIN_KEY) === "1";
       setAuthenticated(isAuthenticated);
-      // FIX 2: conservar sessionStorage para que la sesión sobreviva a refresh mientras la pestaña siga abierta.
+      // Limpia restos de una versión anterior que usaba localStorage persistente.
+      getSessionStorage()?.removeItem(LOGIN_KEY);
       localStorage.removeItem(LOGIN_KEY);
     } finally {
       setReady(true);

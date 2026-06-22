@@ -17,12 +17,11 @@ export default function HistoryPage() {
     const sorted = sortSessionsNewestFirst(state.sessions);
     return sorted.filter((session) => {
       if (!normalized) return true;
-      // FIX 12: buscar por fecha legible además de la fecha ISO cruda.
       const haystack = [
         session.title,
         session.routineName,
         session.routineDay,
-        `${formatDateTime(session.startedAt)} ${formatDateLabel(session.startedAt)}`,
+        session.startedAt,
         ...session.entries.map((entry) => `${entry.exerciseName} ${entry.muscleGroup}`)
       ].join(" ").toLowerCase();
       return haystack.includes(normalized);
@@ -62,15 +61,10 @@ export default function HistoryPage() {
                             <div className="mt-1 text-lg font-semibold">{session.title}</div>
                             <div className="mt-1 text-sm text-muted-foreground">{formatDateTime(session.startedAt)} · {formatDuration(session.durationMinutes)}</div>
                           </div>
-                          <button
-                            onClick={() => {
-                              // FIX 13: confirmar antes de borrar una sesión.
-                              if (window.confirm("¿Borrar esta sesión? Esta acción no se puede deshacer.")) {
-                                deleteSession(session.id);
-                              }
-                            }}
-                            className="rounded-full border border-border bg-surface-2 p-2 text-muted-foreground"
-                          >
+                          <button onClick={() => {
+                            if (!window.confirm("¿Seguro que deseas borrar esta sesión? Esta acción no se puede deshacer.")) return;
+                            deleteSession(session.id);
+                          }} className="rounded-full border border-border bg-surface-2 p-2 text-muted-foreground">
                             <Trash2 className="h-4 w-4" />
                           </button>
                         </div>

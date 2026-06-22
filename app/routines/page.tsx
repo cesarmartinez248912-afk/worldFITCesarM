@@ -6,10 +6,11 @@ import { MobileShell, TopAccent } from "@/components/mobile-shell";
 import { Button, Card, Field, SelectField } from "@/components/ui";
 import { useAppStore } from "@/hooks/use-app-store";
 import { createId } from "@/utils/id";
-import type { MuscleGroup, RoutineItem, RoutineTemplate } from "@/types";
+import type { MuscleGroup, RoutineItem, RoutineTemplate, WeekDay } from "@/types";
 
 const groups: MuscleGroup[] = ["Pecho", "Espalda", "Pierna", "Hombros", "Bíceps", "Tríceps", "Core", "Cardio", "Full Body", "Otro"];
 const validGroups = new Set<MuscleGroup>(groups);
+const weekDays: ("" | WeekDay)[] = ["", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
 
 function emptyRoutine(): RoutineTemplate {
   const now = new Date().toISOString();
@@ -19,7 +20,8 @@ function emptyRoutine(): RoutineTemplate {
     description: "",
     createdAt: now,
     updatedAt: now,
-    items: []
+    items: [],
+    scheduledWeekDays: {}
   };
 }
 
@@ -42,6 +44,17 @@ function downloadFile(filename: string, content: string, type = "application/jso
   URL.revokeObjectURL(url);
 }
 
+function normalizeScheduledWeekDays(input: unknown): Partial<Record<string, WeekDay>> | undefined {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return undefined;
+  const entries = Object.entries(input as Record<string, unknown>).reduce<Partial<Record<string, WeekDay>>>((acc, [dayLabel, value]) => {
+    if (weekDays.includes(value as WeekDay) && value) {
+      acc[dayLabel] = value as WeekDay;
+    }
+    return acc;
+  }, {});
+  return Object.keys(entries).length ? entries : undefined;
+}
+
 function normalizeImportedRoutine(input: unknown): RoutineTemplate | null {
   if (!input || typeof input !== "object") return null;
   const raw = input as Partial<RoutineTemplate> & { items?: unknown };
@@ -58,7 +71,6 @@ function normalizeImportedRoutine(input: unknown): RoutineTemplate | null {
         : "Otro";
       if (!exerciseName) return null;
 
-      // FIX 10: RoutineItem ya no guarda weight; se normaliza solo lo que sí usa la rutina.
       return {
         id: createId("ri"),
         dayLabel,
@@ -78,6 +90,7 @@ function normalizeImportedRoutine(input: unknown): RoutineTemplate | null {
 
   const name = typeof raw.name === "string" && raw.name.trim() ? raw.name.trim() : "Rutina importada";
   const description = typeof raw.description === "string" && raw.description.trim() ? raw.description.trim() : "Rutina importada desde archivo";
+  const scheduledWeekDays = normalizeScheduledWeekDays(raw.scheduledWeekDays);
 
   return {
     id: createId("rt"),
@@ -86,6 +99,7 @@ function normalizeImportedRoutine(input: unknown): RoutineTemplate | null {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     items: normalizedItems,
+    scheduledWeekDays,
   };
 }
 
@@ -140,6 +154,7 @@ export default function RoutinesPage() {
   const routineCount = state.routines.length;
   const selectedIsNew = selectedId === "new";
   const groupedDays = useMemo(() => groupDays(draft.items), [draft.items]);
+  const uniqueDays = useMemo(() => [...new Set(draft.items.map((item) => item.dayLabel))], [draft.items]);
 
   const addItem = () => {
     const trimmed = exerciseName.trim();
@@ -327,6 +342,42 @@ export default function RoutinesPage() {
                     <Field label="Nombre" value={draft.name} onChange={(e) => setDraft((current) => ({ ...current, name: e.target.value }))} placeholder="Ej. Recomposición corporal" />
                     <Field label="Descripción" value={draft.description} onChange={(e) => setDraft((current) => ({ ...current, description: e.target.value }))} placeholder="Ej. Rutina base para 4 días" />
                   </div>
+
+                  {draft.items.length ? (
+                    <div className="mt-4 rounded-2xl border border-border bg-surface-2 p-3">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Días de la semana</div>
+                      <div className="mt-3 space-y-3">
+                        {uniqueDays.map((label) => (
+                          <div key={label} className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-surface px-3 py-2">
+                            <div className="text-sm font-semibold">{label}</div>
+                            <SelectField
+                              className="w-44"
+                              value={draft.scheduledWeekDays?.[label] ?? ""}
+                              onChange={(e) => {
+                                const value = e.target.value as "" | WeekDay;
+                                setDraft((current) => {
+                                  const next = { ...(current.scheduledWeekDays ?? {}) };
+                                  if (!value) {
+                                    delete next[label];
+                                  } else {
+                                    next[label] = value;
+                                  }
+                                  return {
+                                    ...current,
+                                    scheduledWeekDays: Object.keys(next).length ? next : undefined
+                                  };
+                                });
+                              }}
+                            >
+                              {weekDays.map((day) => (
+                                <option key={day || "empty"} value={day}>{day || "Sin asignar"}</option>
+                              ))}
+                            </SelectField>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               </Card>
 
@@ -366,16 +417,10 @@ export default function RoutinesPage() {
                       Duplicar
                     </Button>
                     {draft.id && !selectedIsNew ? (
-                      <Button
-                        variant="danger"
-                        className="gap-2"
-                        onClick={() => {
-                          // FIX 13: confirmar antes de borrar una rutina.
-                          if (window.confirm("¿Borrar esta rutina? Se eliminará de tus planes guardados.")) {
-                            deleteRoutine(draft.id);
-                          }
-                        }}
-                      >
+                      <Button variant="danger" className="gap-2" onClick={() => {
+                        if (!window.confirm("¿Seguro que deseas borrar esta rutina? Esta acción no se puede deshacer.")) return;
+                        deleteRoutine(draft.id);
+                      }}>
                         <Trash2 className="h-4 w-4" />
                         Borrar
                       </Button>

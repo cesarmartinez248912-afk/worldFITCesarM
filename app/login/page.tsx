@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Lock } from "lucide-react";
 import { Button, Card, Field } from "@/components/ui";
@@ -16,11 +15,6 @@ export default function LoginPage() {
   useEffect(() => {
     if (authenticated) router.replace("/");
   }, [authenticated, router]);
-
-  // FIX 11: permitir enviar el formulario con Enter desde el campo de contraseña.
-  const handlePasswordKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") submit();
-  };
 
   const submit = () => {
     const ok = login(password.trim());
@@ -54,7 +48,6 @@ export default function LoginPage() {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            onKeyDown={handlePasswordKeyDown}
             placeholder="Escribe la contraseña local"
           />
           {error ? <div className="rounded-2xl border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger-foreground">{error}</div> : null}

@@ -6,6 +6,7 @@ export const seededState: AppState = {
   routines: [],
   goals: [],
   sessions: [],
+  weekSchedules: [],
   settings: {
     theme: "dark",
     units: "kg",

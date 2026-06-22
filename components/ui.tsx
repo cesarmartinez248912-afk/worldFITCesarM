@@ -78,15 +78,14 @@ export function Toggle({
     <button
       type="button"
       onClick={() => {
-        // FIX 16: el control puede deshabilitarse sin perder la UI visible.
         if (!disabled) onChange(!checked);
       }}
-      disabled={disabled}
       className={cn(
-        "relative inline-flex h-7 w-12 items-center rounded-full border border-border transition disabled:pointer-events-none disabled:opacity-50",
+        "relative inline-flex h-7 w-12 items-center rounded-full border border-border transition disabled:cursor-not-allowed disabled:opacity-50",
         checked ? "bg-primary" : "bg-surface-3"
       )}
       aria-pressed={checked}
+      disabled={disabled}
     >
       <span
         className={cn(

@@ -42,16 +42,6 @@ export default function GoalsPage() {
             <div className="mt-3 space-y-3">
               {activeGoals.map((goal) => {
                 const progress = Math.min(100, Math.round((goal.currentWeight / goal.targetWeight) * 100));
-                const goalName = goal.exerciseName.toLowerCase();
-                // FIX 5: usar el peso real máximo registrado en sesiones para sugerir actualización.
-                const maxRealWeight = state.sessions.reduce((sessionMax, session) => {
-                  const maxInSession = session.entries.reduce((entryMax, entry) => {
-                    if (entry.exerciseName.toLowerCase() !== goalName) return entryMax;
-                    return Math.max(entryMax, entry.weight);
-                  }, 0);
-                  return Math.max(sessionMax, maxInSession);
-                }, 0);
-
                 return (
                   <div key={goal.id} className="rounded-2xl border border-border bg-surface-2 p-4">
                     <div className="flex items-start justify-between gap-3">
@@ -71,18 +61,6 @@ export default function GoalsPage() {
                       <span>{progress}%</span>
                       <span>{formatKg(goal.targetWeight, state.settings.units)}</span>
                     </div>
-                    {maxRealWeight > goal.currentWeight ? (
-                      <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-border bg-surface px-3 py-2 text-xs text-muted-foreground">
-                        <div>Registraste {formatKg(maxRealWeight, state.settings.units)} en sesiones — ¿actualizar?</div>
-                        <Button
-                          variant="secondary"
-                          className="shrink-0 px-3 py-2 text-xs"
-                          onClick={() => updateGoal(goal.id, { currentWeight: maxRealWeight })}
-                        >
-                          Actualizar
-                        </Button>
-                      </div>
-                    ) : null}
                     <div className="mt-3 flex gap-2">
                       <Button variant="secondary" className="flex-1 gap-2" onClick={() => updateGoal(goal.id, { currentWeight: goal.currentWeight + 1 })}>+1 {state.settings.units}</Button>
                       <Button className="flex-1 gap-2" onClick={() => updateGoal(goal.id, { currentWeight: goal.targetWeight, completed: true })}>

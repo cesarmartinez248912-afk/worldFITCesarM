@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { BarChart3, Dumbbell, History, Home, Settings, TimerReset } from "lucide-react";
+import { BarChart3, CalendarDays, Dumbbell, History, Home, Settings, TimerReset } from "lucide-react";
 import { cn } from "@/utils/cn";
 
 const items = [
@@ -8,6 +8,7 @@ const items = [
   { href: "/history", label: "Historial", icon: History },
   { href: "/register", label: "Registrar", icon: Dumbbell, center: true },
   { href: "/routines", label: "Rutinas", icon: TimerReset },
+  { href: "/schedule", label: "Semana", icon: CalendarDays },
   { href: "/stats", label: "Progreso", icon: BarChart3 }
 ];
 
@@ -25,7 +26,7 @@ export function MobileShell({
       {children}
       {showNav ? (
         <nav className="fixed bottom-0 left-1/2 z-40 w-full max-w-[430px] -translate-x-1/2 border-t border-border/60 bg-background/70 px-4 pb-[calc(env(safe-area-inset-bottom)+0.9rem)] pt-3 backdrop-blur-2xl shadow-[0_-10px_30px_rgba(0,0,0,0.22)]">
-          <div className="grid grid-cols-5 items-end gap-2">
+          <div className="grid grid-cols-6 items-end gap-2">
             {items.map(({ href, label, icon: Icon, center }) => {
               const activeState = active === href || (href !== "/" && active.startsWith(href));
               return (
@@ -33,7 +34,7 @@ export function MobileShell({
                   key={href}
                   href={href}
                   className={cn(
-                    "relative flex flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-semibold transition",
+                    "relative flex flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[10px] font-semibold transition",
                     center
                       ? "mx-auto -mt-8 h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-glow"
                       : activeState
@@ -41,8 +42,8 @@ export function MobileShell({
                         : "text-muted-foreground"
                   )}
                 >
-                  <Icon className={cn(center ? "h-6 w-6" : "h-5 w-5", activeState && !center ? "text-primary" : "")} />
-                  {!center ? <span>{label}</span> : null}
+                  <Icon className={cn(center ? "h-6 w-6" : "h-4 w-4", activeState && !center ? "text-primary" : "")} />
+                  {!center ? <span className="text-[10px]">{label}</span> : null}
                 </Link>
               );
             })}
