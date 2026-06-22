@@ -98,6 +98,8 @@ export default function RegisterPage() {
   const [reps, setReps] = useState(8);
   const [sets, setSets] = useState(3);
   const [restSeconds, setRestSeconds] = useState(60);
+  const [manualAlternateExercises, setManualAlternateExercises] = useState<string[]>([]);
+  const [manualAlternateDraft, setManualAlternateDraft] = useState("");
   const [pendingEntries, setPendingEntries] = useState<DraftEntry[]>([]);
   const [completedEntries, setCompletedEntries] = useState<WorkoutEntry[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -157,12 +159,26 @@ export default function RegisterPage() {
     setPendingEntries((current) => current.map((entry, index) => (index === activeIndex ? { ...entry, exerciseName } : entry)));
   };
 
+  const addManualAlternativeExercise = () => {
+    const value = manualAlternateDraft.trim();
+    if (!value) return;
+    setManualAlternateExercises((current) => [...new Set([...current, value])]);
+    setManualAlternateDraft("");
+  };
+
+  const removeManualAlternativeExercise = (exerciseNameToRemove: string) => {
+    setManualAlternateExercises((current) => current.filter((entry) => entry !== exerciseNameToRemove));
+  };
+
+
   const resetWorkout = () => {
     setPendingEntries([]);
     setCompletedEntries([]);
     setActiveIndex(0);
     setWeightPromptOpen(false);
     setWeightInput("");
+    setManualAlternateExercises([]);
+    setManualAlternateDraft("");
     workoutStartTimeRef.current = 0;
   };
 
@@ -215,15 +231,18 @@ export default function RegisterPage() {
   const addLine = () => {
     const name = exerciseName.trim();
     if (!name) return;
+    const alternates = [...new Set(manualAlternateExercises.map((entry) => entry.trim()).filter(Boolean))];
     setPendingEntries((current) => {
       if (!current.length) workoutStartTimeRef.current = Date.now();
       return [
         ...current,
-        buildDraftEntry({ exerciseName: name, muscleGroup, reps, sets, restSeconds }, current.length + 1)
+        buildDraftEntry({ exerciseName: name, muscleGroup, reps, sets, restSeconds, alternateExercises: alternates }, current.length + 1)
       ];
     });
     setExerciseName("");
     setRestSeconds(60);
+    setManualAlternateExercises([]);
+    setManualAlternateDraft("");
     if (!hasWorkoutStarted) {
       setActiveIndex(0);
       setWeightInput("");
@@ -484,7 +503,49 @@ export default function RegisterPage() {
               <SelectField label="Grupo muscular" value={muscleGroup} onChange={(e) => setMuscleGroup(e.target.value as MuscleGroup)}>
                 {muscleGroups.map((group) => <option key={group}>{group}</option>)}
               </SelectField>
-              <Field label="Ejercicio" value={exerciseName} onChange={(e) => setExerciseName(e.target.value)} placeholder="Ej. Laterales" />
+              <Field label="Ejercicio principal" value={exerciseName} onChange={(e) => setExerciseName(e.target.value)} placeholder="Ej. Laterales" />
+            </div>
+            <div className="rounded-2xl border border-border bg-surface-2 p-3">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Otra opción de ejercicio</div>
+              <div className="mt-1 text-xs text-muted-foreground">Guarda variantes para cambiar rápido durante la sesión.</div>
+              <div className="mt-3 flex gap-2">
+                <Field
+                  className="flex-1"
+                  label="Escribe una variante"
+                  value={manualAlternateDraft}
+                  onChange={(e) => setManualAlternateDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addManualAlternativeExercise();
+                    }
+                  }}
+                  placeholder="Ej. Laterales en polea"
+                />
+                <Button variant="secondary" className="self-end gap-2" onClick={addManualAlternativeExercise}>
+                  <Plus className="h-4 w-4" />
+                  Añadir
+                </Button>
+              </div>
+              {manualAlternateExercises.length ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {manualAlternateExercises.map((exercise) => (
+                    <span key={exercise} className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-xs font-semibold text-foreground">
+                      {exercise}
+                      <button
+                        type="button"
+                        className="text-muted-foreground transition hover:text-foreground"
+                        onClick={() => removeManualAlternativeExercise(exercise)}
+                        aria-label={`Eliminar variante ${exercise}`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-3 text-xs text-muted-foreground">Todavía no agregas variantes.</div>
+              )}
             </div>
             <div className="grid grid-cols-3 gap-3">
               <Field label="Repeticiones" type="number" value={reps} onChange={(e) => setReps(Number(e.target.value))} />
