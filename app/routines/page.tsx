@@ -55,6 +55,14 @@ function normalizeScheduledWeekDays(input: unknown): Partial<Record<string, Week
   return Object.keys(entries).length ? entries : undefined;
 }
 
+function normalizeAlternativeExercises(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const items = value
+    .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+    .filter((entry) => entry.length > 0);
+  return items.length ? [...new Set(items)] : undefined;
+}
+
 function normalizeImportedRoutine(input: unknown): RoutineTemplate | null {
   if (!input || typeof input !== "object") return null;
   const raw = input as Partial<RoutineTemplate> & { items?: unknown };
@@ -81,6 +89,8 @@ function normalizeImportedRoutine(input: unknown): RoutineTemplate | null {
         restSeconds: Number.isFinite(Number(row.restSeconds)) ? Number(row.restSeconds) : undefined,
         order: Number.isFinite(Number(row.order)) ? Number(row.order) : index + 1,
         notes: typeof row.notes === "string" && row.notes.trim() ? row.notes.trim() : undefined,
+        alternateExercises: normalizeAlternativeExercises((row as { alternateExercises?: unknown; alternativeExercises?: unknown }).alternateExercises)
+          ?? normalizeAlternativeExercises((row as { alternateExercises?: unknown; alternativeExercises?: unknown }).alternativeExercises),
       };
     })
     .filter((item): item is RoutineItem => item !== null)
@@ -128,7 +138,46 @@ export default function RoutinesPage() {
   const [reps, setReps] = useState(8);
   const [sets, setSets] = useState(3);
   const [restSeconds, setRestSeconds] = useState(60);
+  const [variantDrafts, setVariantDrafts] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const updateRoutineItem = (itemId: string, patch: Partial<RoutineItem>) => {
+    setDraft((current) => ({
+      ...current,
+      items: current.items.map((row) => (row.id === itemId ? { ...row, ...patch } : row))
+    }));
+  };
+
+  const addAlternativeExercise = (itemId: string) => {
+    const value = (variantDrafts[itemId] ?? "").trim();
+    if (!value) return;
+    setDraft((current) => ({
+      ...current,
+      items: current.items.map((row) => {
+        if (row.id !== itemId) return row;
+        const next = [...(row.alternateExercises ?? []), value].map((entry) => entry.trim()).filter(Boolean);
+        return {
+          ...row,
+          alternateExercises: [...new Set(next)]
+        };
+      })
+    }));
+    setVariantDrafts((current) => ({ ...current, [itemId]: "" }));
+  };
+
+  const removeAlternativeExercise = (itemId: string, exerciseNameToRemove: string) => {
+    setDraft((current) => ({
+      ...current,
+      items: current.items.map((row) => {
+        if (row.id !== itemId) return row;
+        const next = (row.alternateExercises ?? []).filter((entry) => entry !== exerciseNameToRemove);
+        return {
+          ...row,
+          alternateExercises: next.length ? next : undefined
+        };
+      })
+    }));
+  };
 
   useEffect(() => {
     if (selectedId === "new") {
@@ -445,13 +494,68 @@ export default function RoutinesPage() {
                               <Field label="Ejercicio" value={item.exerciseName} onChange={(e) => setDraft((current) => ({ ...current, items: current.items.map((row) => row.id === item.id ? { ...row, exerciseName: e.target.value } : row) }))} />
                             </div>
                             <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
-                              <Field type="number" value={item.reps} onChange={(e) => setDraft((current) => ({ ...current, items: current.items.map((row) => row.id === item.id ? { ...row, reps: Number(e.target.value) } : row) }))} label="Reps" />
-                              <Field type="number" value={item.sets} onChange={(e) => setDraft((current) => ({ ...current, items: current.items.map((row) => row.id === item.id ? { ...row, sets: Number(e.target.value) } : row) }))} label="Series" />
-                              <Field type="number" min={0} value={item.restSeconds ?? 60} onChange={(e) => setDraft((current) => ({ ...current, items: current.items.map((row) => row.id === item.id ? { ...row, restSeconds: Number(e.target.value) } : row) }))} label="Descanso (s)" />
+                              <Field type="number" value={item.reps} onChange={(e) => updateRoutineItem(item.id, { reps: Number(e.target.value) })} label="Reps" />
+                              <Field type="number" value={item.sets} onChange={(e) => updateRoutineItem(item.id, { sets: Number(e.target.value) })} label="Series" />
+                              <Field type="number" min={0} value={item.restSeconds ?? 60} onChange={(e) => updateRoutineItem(item.id, { restSeconds: Number(e.target.value) })} label="Descanso (s)" />
                             </div>
+
+                            <div className="mt-3 rounded-2xl border border-border bg-surface-2 p-3">
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Otra opción de ejercicio</div>
+                                  <div className="mt-1 text-xs text-muted-foreground">Añade variantes por si quieres cambiar este movimiento durante la rutina.</div>
+                                </div>
+                              </div>
+                              <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto]">
+                                <Field
+                                  label="Escribe una variante"
+                                  value={variantDrafts[item.id] ?? ""}
+                                  onChange={(e) => setVariantDrafts((current) => ({ ...current, [item.id]: e.target.value }))}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                      e.preventDefault();
+                                      addAlternativeExercise(item.id);
+                                    }
+                                  }}
+                                  placeholder="Ej. Press en máquina"
+                                />
+                                <Button variant="secondary" className="self-end gap-2" onClick={() => addAlternativeExercise(item.id)}>
+                                  <Plus className="h-4 w-4" />
+                                  Agregar
+                                </Button>
+                              </div>
+
+                              {item.alternateExercises?.length ? (
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  {item.alternateExercises.map((exercise) => (
+                                    <span key={exercise} className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-xs font-semibold text-foreground">
+                                      {exercise}
+                                      <button
+                                        type="button"
+                                        className="text-muted-foreground transition hover:text-foreground"
+                                        onClick={() => removeAlternativeExercise(item.id, exercise)}
+                                        aria-label={`Eliminar variante ${exercise}`}
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </button>
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="mt-3 text-xs text-muted-foreground">Todavía no agregas variantes para este ejercicio.</div>
+                              )}
+                            </div>
+
                             <div className="mt-3 flex items-center justify-between gap-3">
                               <div className="text-xs text-muted-foreground">Orden: {item.order} · Descanso: {item.restSeconds ?? 60}s</div>
-                              <Button variant="secondary" className="gap-2" onClick={() => setDraft((current) => ({ ...current, items: current.items.filter((row) => row.id !== item.id) }))}>
+                              <Button variant="secondary" className="gap-2" onClick={() => {
+                                setDraft((current) => ({ ...current, items: current.items.filter((row) => row.id !== item.id) }));
+                                setVariantDrafts((current) => {
+                                  const next = { ...current };
+                                  delete next[item.id];
+                                  return next;
+                                });
+                              }}>
                                 <Trash2 className="h-4 w-4" />
                                 Quitar
                               </Button>

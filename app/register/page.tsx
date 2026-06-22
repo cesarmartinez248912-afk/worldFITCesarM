@@ -15,14 +15,14 @@ import { getLocalISOString, getLocalWeekDay } from "@/utils/schedule";
 
 const muscleGroups: MuscleGroup[] = ["Pecho", "Espalda", "Pierna", "Hombros", "Bíceps", "Tríceps", "Core", "Cardio", "Full Body", "Otro"];
 
-type DraftEntry = WorkoutEntry & { order: number };
+type DraftEntry = WorkoutEntry & { order: number; alternateExercises?: string[] };
 
 type RoutineDayPreview = {
   label: string;
   exercises: number;
   sets: number;
   restSeconds: number;
-  items: { exerciseName: string; reps: number; sets: number; restSeconds?: number }[];
+  items: { exerciseName: string; reps: number; sets: number; restSeconds?: number; alternateExercises?: string[] }[];
 };
 
 function getRoutineDays(routine?: { items: { dayLabel: string; order: number }[] }) {
@@ -44,6 +44,7 @@ function buildDraftEntry(entry: {
   sets: number;
   restSeconds?: number;
   notes?: string;
+  alternateExercises?: string[];
 }, order: number): DraftEntry {
   return {
     id: createId("entry"),
@@ -55,6 +56,7 @@ function buildDraftEntry(entry: {
     sets: entry.sets,
     restSeconds: entry.restSeconds ?? 60,
     notes: entry.notes,
+    alternateExercises: entry.alternateExercises?.length ? [...new Set(entry.alternateExercises)] : undefined,
     order,
   };
 }
@@ -130,20 +132,30 @@ export default function RegisterPage() {
 
   const routineEntries = useMemo(() => {
     if (!selectedRoutine || selectedDay === "Manual") return [];
-    return selectedRoutine.items.filter((item) => item.dayLabel === selectedDay).sort((a, b) => a.order - b.order);
+    return selectedRoutine.items
+      .filter((item) => item.dayLabel === selectedDay)
+      .sort((a, b) => a.order - b.order)
+      .map((item) => ({ ...item, alternateExercises: item.alternateExercises?.length ? [...item.alternateExercises] : undefined }));
   }, [selectedRoutine, selectedDay]);
 
   const routinePreview = useMemo<RoutineDayPreview[]>(() => {
     if (!selectedRoutine) return [];
     const days = routineDays.length ? routineDays : [...new Set(selectedRoutine.items.map((item) => item.dayLabel))];
     return days.map((day) => {
-      const items = selectedRoutine.items.filter((item) => item.dayLabel === day).sort((a, b) => a.order - b.order);
+      const items = selectedRoutine.items
+        .filter((item) => item.dayLabel === day)
+        .sort((a, b) => a.order - b.order)
+        .map((item) => ({ ...item, alternateExercises: item.alternateExercises?.length ? [...item.alternateExercises] : undefined }));
       return summarizeRoutineDay(day, items);
     });
   }, [routineDays, selectedRoutine]);
 
   const currentExercise = pendingEntries[activeIndex] ?? null;
   const hasWorkoutStarted = pendingEntries.length > 0;
+
+  const replaceCurrentExercise = (exerciseName: string) => {
+    setPendingEntries((current) => current.map((entry, index) => (index === activeIndex ? { ...entry, exerciseName } : entry)));
+  };
 
   const resetWorkout = () => {
     setPendingEntries([]);
@@ -188,6 +200,7 @@ export default function RegisterPage() {
           sets: item.sets,
           restSeconds: item.restSeconds,
           notes: item.notes,
+          alternateExercises: item.alternateExercises,
         },
         index + 1
       )
@@ -447,6 +460,11 @@ export default function RegisterPage() {
                         <div className="min-w-0">
                           <div className="truncate font-semibold">{item.exerciseName}</div>
                           <div className="text-xs text-muted-foreground">{item.reps} reps · {item.sets} series</div>
+                          {item.alternateExercises?.length ? (
+                            <div className="mt-1 text-[11px] text-muted-foreground">
+                              Otras opciones: {item.alternateExercises.join(" · ")}
+                            </div>
+                          ) : null}
                         </div>
                         <div className="text-xs text-muted-foreground">{formatSeconds(item.restSeconds ?? 60)}</div>
                       </div>
@@ -507,6 +525,23 @@ export default function RegisterPage() {
               <div className="mt-1 text-sm text-muted-foreground">
                 {currentExercise.muscleGroup} · {currentExercise.reps} reps · {currentExercise.sets} series · Descanso {currentExercise.restSeconds ?? 60}s
               </div>
+              {currentExercise.alternateExercises?.length ? (
+                <div className="mt-3 rounded-2xl border border-border bg-surface px-3 py-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Opciones de ejercicio</div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {currentExercise.alternateExercises.map((exercise) => (
+                      <button
+                        key={exercise}
+                        type="button"
+                        onClick={() => replaceCurrentExercise(exercise)}
+                        className="rounded-full border border-border bg-surface-2 px-3 py-1 text-xs font-semibold text-foreground transition hover:border-primary hover:bg-[rgba(255,179,181,0.12)]"
+                      >
+                        {exercise}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
               <Button className="mt-4 w-full gap-2" onClick={openFinishPrompt} disabled={!!restTimer}>
                 Finalizar ejercicio
               </Button>

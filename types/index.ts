@@ -58,6 +58,7 @@ export interface RoutineItem {
   restSeconds?: number;
   order: number;
   notes?: string;
+  alternateExercises?: string[];
 }
 
 export interface RoutineTemplate {

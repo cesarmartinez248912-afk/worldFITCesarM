@@ -193,17 +193,23 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
           id,
           name: routine.name.trim() || "Rutina nueva",
           description: routine.description.trim() || "Rutina personalizada",
-          items: routine.items.map((item) => ({
-            id: item.id || createId("ri"),
-            dayLabel: item.dayLabel,
-            exerciseName: item.exerciseName,
-            muscleGroup: item.muscleGroup,
-            reps: item.reps,
-            sets: item.sets,
-            restSeconds: item.restSeconds,
-            order: item.order,
-            notes: item.notes,
-          })).sort((a, b) => a.order - b.order),
+          items: routine.items.map((item) => {
+            const alternateExercises = (item.alternateExercises ?? [])
+              .map((exercise) => exercise.trim())
+              .filter((exercise): exercise is string => Boolean(exercise));
+            return {
+              id: item.id || createId("ri"),
+              dayLabel: item.dayLabel,
+              exerciseName: item.exerciseName,
+              muscleGroup: item.muscleGroup,
+              reps: item.reps,
+              sets: item.sets,
+              restSeconds: item.restSeconds,
+              order: item.order,
+              notes: item.notes,
+              alternateExercises: alternateExercises.length ? alternateExercises : undefined,
+            };
+          }).sort((a, b) => a.order - b.order),
           scheduledWeekDays: routine.scheduledWeekDays && Object.keys(routine.scheduledWeekDays).length ? { ...routine.scheduledWeekDays } : undefined,
           createdAt: exists ? previous?.createdAt ?? now : now,
           updatedAt: now
