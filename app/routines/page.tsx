@@ -202,6 +202,15 @@ export default function RoutinesPage() {
   }, [selectedId, state.routines]);
 
   useEffect(() => {
+    const selectedExists = selectedId ? state.routines.some((routine) => routine.id === selectedId) : false;
+    if (selectedId === "new" || selectedExists) return;
+    const fallback = state.settings.activeRoutineId && state.routines.some((routine) => routine.id === state.settings.activeRoutineId)
+      ? state.settings.activeRoutineId
+      : state.routines[0]?.id;
+    if (fallback) setSelectedId(fallback);
+  }, [selectedId, state.routines, state.settings.activeRoutineId]);
+
+  useEffect(() => {
     if (selectedId !== "new" && selectedId && selectedId !== state.settings.activeRoutineId) {
       updateSettings({ activeRoutineId: selectedId });
     }
@@ -560,6 +569,13 @@ export default function RoutinesPage() {
                               <Field type="number" value={item.sets} onChange={(e) => updateRoutineItem(item.id, { sets: Number(e.target.value) })} label="Series" />
                               <Field type="number" min={0} value={item.restSeconds ?? 60} onChange={(e) => updateRoutineItem(item.id, { restSeconds: Number(e.target.value) })} label="Descanso (s)" />
                             </div>
+                            <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                              <span className="rounded-full border border-border bg-surface-2 px-2.5 py-1">{item.muscleGroup}</span>
+                              <span className="rounded-full border border-border bg-surface-2 px-2.5 py-1">{item.reps} reps</span>
+                              <span className="rounded-full border border-border bg-surface-2 px-2.5 py-1">{item.sets} series</span>
+                              <span className="rounded-full border border-border bg-surface-2 px-2.5 py-1">{item.restSeconds ?? 60}s</span>
+                              <span className="rounded-full border border-border bg-surface-2 px-2.5 py-1">{item.alternateExercises?.length ?? 0} variantes</span>
+                            </div>
 
                             <div className="mt-3 rounded-2xl border border-border bg-surface-2 p-3">
                               <div className="flex items-start justify-between gap-3">
@@ -587,24 +603,45 @@ export default function RoutinesPage() {
                                 </Button>
                               </div>
 
-                              {item.alternateExercises?.length ? (
-                                <div className="mt-3 flex flex-wrap gap-2">
-                                  {item.alternateExercises.map((exercise) => (
-                                    <span key={exercise} className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-xs font-semibold text-foreground">
-                                      {exercise}
-                                      <button
-                                        type="button"
-                                        className="text-muted-foreground transition hover:text-foreground"
-                                        onClick={() => removeAlternativeExercise(item.id, exercise)}
-                                        aria-label={`Eliminar variante ${exercise}`}
-                                      >
-                                        <Trash2 className="h-3.5 w-3.5" />
-                                      </button>
-                                    </span>
-                                  ))}
-                                </div>
-                              ) : (
-                                <div className="mt-3 text-xs text-muted-foreground">Todavía no agregas variantes para este ejercicio.</div>
+                              {item.alternateExercises?.length ? (() => {
+                                const variants = item.alternateExercises;
+                                const preview = variants.slice(0, 3);
+                                const remaining = variants.length - preview.length;
+                                return (
+                                  <div className="mt-3 rounded-2xl border border-border bg-surface px-3 py-3">
+                                    <div className="flex items-center justify-between gap-3">
+                                      <div>
+                                        <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Otras opciones de ejercicio</div>
+                                        <div className="mt-1 text-xs text-muted-foreground">{variants.length} variantes guardadas</div>
+                                      </div>
+                                      <div className="rounded-full border border-border bg-surface-2 px-2.5 py-1 text-[10px] font-semibold text-muted-foreground">
+                                        {variants.length}
+                                      </div>
+                                    </div>
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                      {preview.map((exercise) => (
+                                        <span key={exercise} className="inline-flex max-w-full items-center gap-2 rounded-full border border-border bg-background px-3 py-1 text-xs font-semibold text-foreground">
+                                          <span className="max-w-[170px] truncate">{exercise}</span>
+                                          <button
+                                            type="button"
+                                            className="text-muted-foreground transition hover:text-foreground"
+                                            onClick={() => removeAlternativeExercise(item.id, exercise)}
+                                            aria-label={`Eliminar variante ${exercise}`}
+                                          >
+                                            <Trash2 className="h-3.5 w-3.5" />
+                                          </button>
+                                        </span>
+                                      ))}
+                                      {remaining > 0 ? (
+                                        <span className="inline-flex items-center rounded-full border border-dashed border-border bg-surface-2 px-3 py-1 text-xs font-semibold text-muted-foreground">
+                                          +{remaining} más
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                );
+                              })() : (
+                                <div className="mt-3 rounded-2xl border border-dashed border-border bg-surface-2 p-3 text-xs text-muted-foreground">Todavía no agregas variantes para este ejercicio.</div>
                               )}
                             </div>
 

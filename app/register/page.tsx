@@ -93,6 +93,7 @@ export default function RegisterPage() {
   const [title, setTitle] = useState(selectedRoutine ? `${selectedRoutine.name}` : "Entrenamiento libre");
   const [notes, setNotes] = useState("");
   const [startedAt, setStartedAt] = useState(getLocalISOString());
+  const [startedAtKey, setStartedAtKey] = useState(0);
   const [exerciseName, setExerciseName] = useState("");
   const [muscleGroup, setMuscleGroup] = useState<MuscleGroup>("Pecho");
   const [reps, setReps] = useState(8);
@@ -180,6 +181,8 @@ export default function RegisterPage() {
     setManualAlternateExercises([]);
     setManualAlternateDraft("");
     workoutStartTimeRef.current = 0;
+    setStartedAt(getLocalISOString());
+    setStartedAtKey((current) => current + 1);
   };
 
   const importRoutine = () => {
@@ -573,10 +576,11 @@ export default function RegisterPage() {
           </div>
 
           <Field
+            key={startedAtKey}
             className="mt-4"
             label="Fecha y hora de inicio"
             type="datetime-local"
-            value={startedAt}
+            defaultValue={startedAt}
             onChange={(e) => setStartedAt(e.target.value)}
           />
 
@@ -586,23 +590,39 @@ export default function RegisterPage() {
               <div className="mt-1 text-sm text-muted-foreground">
                 {currentExercise.muscleGroup} · {currentExercise.reps} reps · {currentExercise.sets} series · Descanso {currentExercise.restSeconds ?? 60}s
               </div>
-              {currentExercise.alternateExercises?.length ? (
-                <div className="mt-3 rounded-2xl border border-border bg-surface px-3 py-3">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Opciones de ejercicio</div>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {currentExercise.alternateExercises.map((exercise) => (
-                      <button
-                        key={exercise}
-                        type="button"
-                        onClick={() => replaceCurrentExercise(exercise)}
-                        className="rounded-full border border-border bg-surface-2 px-3 py-1 text-xs font-semibold text-foreground transition hover:border-primary hover:bg-[rgba(255,179,181,0.12)]"
-                      >
-                        {exercise}
-                      </button>
-                    ))}
+              {currentExercise.alternateExercises?.length ? (() => {
+                const variants = currentExercise.alternateExercises ?? [];
+                const preview = variants.slice(0, 3);
+                const remaining = variants.length - preview.length;
+                return (
+                  <div className="mt-3 rounded-2xl border border-border bg-surface px-3 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Opciones de ejercicio</div>
+                        <div className="mt-1 text-xs text-muted-foreground">{variants.length} variantes disponibles</div>
+                      </div>
+                      <div className="rounded-full border border-border bg-surface-2 px-2.5 py-1 text-[10px] font-semibold text-muted-foreground">{variants.length}</div>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {preview.map((exercise) => (
+                        <button
+                          key={exercise}
+                          type="button"
+                          onClick={() => replaceCurrentExercise(exercise)}
+                          className="rounded-full border border-border bg-surface-2 px-3 py-1 text-xs font-semibold text-foreground transition hover:border-primary hover:bg-[rgba(255,179,181,0.12)]"
+                        >
+                          {exercise}
+                        </button>
+                      ))}
+                      {remaining > 0 ? (
+                        <span className="rounded-full border border-dashed border-border bg-background px-3 py-1 text-xs font-semibold text-muted-foreground">
+                          +{remaining} más
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
-                </div>
-              ) : null}
+                );
+              })() : null}
               <Button className="mt-4 w-full gap-2" onClick={openFinishPrompt} disabled={!!restTimer}>
                 Finalizar ejercicio
               </Button>
