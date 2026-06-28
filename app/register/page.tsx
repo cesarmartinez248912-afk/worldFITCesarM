@@ -106,15 +106,20 @@ export default function RegisterPage() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [weightPromptOpen, setWeightPromptOpen] = useState(false);
   const [weightInput, setWeightInput] = useState("");
-  const [restTimer, setRestTimer] = useState<{ secondsLeft: number; nextIndex: number; nextExerciseName: string; endsAt: number } | null>(null);
+  const [restTimer, setRestTimer] = useState<{
+    secondsLeft: number;
+    nextIndex: number;
+    nextExerciseName: string;
+    endsAt: number;
+    kind: "set" | "exercise";
+    nextSet?: number;
+  } | null>(null);
+  const [currentSet, setCurrentSet] = useState(1);
   const workoutStartTimeRef = useRef<number>(0);
 
   useEffect(() => {
-    if (!selectedRoutine) return;
-    const suggested = nextRoutineDay(routineDays, lastRoutineSession?.routineDay);
-    setSelectedDay(suggested);
-    setTitle(`${selectedRoutine.name}${suggested && suggested !== "Manual" ? ` · ${suggested}` : ""}`);
-  }, [selectedRoutineId, selectedRoutine?.id, routineDays.join("|"), lastRoutineSession?.routineDay]);
+    setSelectedDay("Manual");
+  }, [selectedRoutineId]);
 
   useEffect(() => {
     if (!selectedRoutine) return;
@@ -185,28 +190,21 @@ export default function RegisterPage() {
     setStartedAtKey((current) => current + 1);
   };
 
+  const recommendedDayLabel = useMemo(() => {
+    if (!selectedRoutine) return null;
+    const assigned = selectedRoutine.scheduledWeekDays ?? {};
+    const todayWeekDay = getLocalWeekDay();
+    const matchedDayLabel = Object.entries(assigned).find(([, weekDay]) => weekDay === todayWeekDay)?.[0];
+    if (matchedDayLabel) return matchedDayLabel;
+    if (!routineDays.length) return null;
+    return nextRoutineDay(routineDays, lastRoutineSession?.routineDay);
+  }, [selectedRoutine, routineDays, lastRoutineSession?.routineDay]);
+
   const importRoutine = () => {
     if (!selectedRoutine) return;
 
-    const assignedWeekDays = Object.values(selectedRoutine.scheduledWeekDays ?? {}).filter(Boolean);
-    let dayForImport = selectedDay;
-
-    if (assignedWeekDays.length > 0) {
-      const todayWeekDay = getLocalWeekDay();
-      if (!assignedWeekDays.includes(todayWeekDay)) {
-        const proceed = window.confirm(`Hoy es ${todayWeekDay}. Esta rutina está programada para: ${assignedWeekDays.join(", ")}. ¿Iniciar de todas formas?`);
-        if (!proceed) return;
-      } else {
-        const matchedDayLabel = Object.entries(selectedRoutine.scheduledWeekDays ?? {}).find(([, weekDay]) => weekDay === todayWeekDay)?.[0];
-        if (matchedDayLabel) {
-          dayForImport = matchedDayLabel;
-          setSelectedDay(matchedDayLabel);
-        }
-      }
-    }
-
-    const source = dayForImport !== "Manual"
-      ? selectedRoutine.items.filter((item) => item.dayLabel === dayForImport).sort((a, b) => a.order - b.order)
+    const source = selectedDay !== "Manual"
+      ? selectedRoutine.items.filter((item) => item.dayLabel === selectedDay).sort((a, b) => a.order - b.order)
       : selectedRoutine.items;
 
     workoutStartTimeRef.current = Date.now();
@@ -255,6 +253,7 @@ export default function RegisterPage() {
   useEffect(() => {
     if (currentExercise) {
       setWeightInput("");
+      setCurrentSet(1);
     }
   }, [currentExercise?.id]);
 
@@ -289,8 +288,15 @@ export default function RegisterPage() {
         // Silencioso: el sonido puede estar bloqueado por el navegador.
       }
 
-      setActiveIndex(restTimer.nextIndex);
-      setRestTimer(null);
+      setRestTimer((current) => {
+        if (!current) return current;
+        if (current.kind === "set") {
+          setCurrentSet(current.nextSet ?? 1);
+        } else {
+          setActiveIndex(current.nextIndex);
+        }
+        return null;
+      });
     };
 
     const update = () => {
@@ -350,9 +356,28 @@ export default function RegisterPage() {
         nextIndex,
         nextExerciseName: pendingEntries[nextIndex]?.exerciseName ?? "Siguiente ejercicio",
         endsAt: Date.now() + rest * 1000,
+        kind: "exercise",
       });
     } else {
       setActiveIndex(nextIndex);
+    }
+  };
+
+  const finishSet = () => {
+    if (!currentExercise) return;
+    const rest = currentExercise.restSeconds ?? 60;
+    const nextSet = currentSet + 1;
+    if (rest > 0) {
+      setRestTimer({
+        secondsLeft: rest,
+        nextIndex: activeIndex,
+        nextExerciseName: currentExercise.exerciseName,
+        endsAt: Date.now() + rest * 1000,
+        kind: "set",
+        nextSet,
+      });
+    } else {
+      setCurrentSet(nextSet);
     }
   };
 
@@ -483,6 +508,31 @@ export default function RegisterPage() {
                 </button>
               );
             })}
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <div className="rounded-2xl border border-border bg-surface-2 p-3">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Recomendación de hoy</div>
+              <div className="mt-1 text-sm font-semibold">{recommendedDayLabel ?? "Sin recomendación"}</div>
+              {recommendedDayLabel && recommendedDayLabel !== selectedDay ? (
+                <button
+                  type="button"
+                  onClick={() => setSelectedDay(recommendedDayLabel)}
+                  className="mt-2 text-xs font-semibold text-primary underline-offset-2 hover:underline"
+                >
+                  Usar este día
+                </button>
+              ) : null}
+            </div>
+            <div className="rounded-2xl border border-border bg-surface-2 p-3">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Última rutina hecha</div>
+              <div className="mt-1 text-sm font-semibold">{lastRoutineSession?.routineDay ?? "Sin registros"}</div>
+              {lastRoutineSession ? (
+                <div className="mt-1 text-[11px] text-muted-foreground">
+                  {new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "short" }).format(new Date(lastRoutineSession.startedAt))}
+                </div>
+              ) : null}
+            </div>
           </div>
 
           <div className="mt-4 rounded-2xl border border-border bg-surface-2 p-3">
@@ -638,6 +688,9 @@ export default function RegisterPage() {
               <div className="mt-1 text-sm text-muted-foreground">
                 {currentExercise.muscleGroup} · {currentExercise.reps} reps · {currentExercise.sets} series · Descanso {currentExercise.restSeconds ?? 60}s
               </div>
+              <div className="mt-2 inline-flex items-center rounded-full border border-primary/40 bg-[rgba(255,179,181,0.12)] px-3 py-1 text-xs font-semibold text-primary">
+                Serie {currentSet} de {currentExercise.sets}
+              </div>
               {currentExercise.alternateExercises?.length ? (() => {
                 const variants = currentExercise.alternateExercises ?? [];
                 const preview = variants.slice(0, 3);
@@ -671,8 +724,12 @@ export default function RegisterPage() {
                   </div>
                 );
               })() : null}
-              <Button className="mt-4 w-full gap-2" onClick={openFinishPrompt} disabled={!!restTimer}>
-                Finalizar ejercicio
+              <Button
+                className="mt-4 w-full gap-2"
+                onClick={currentSet < currentExercise.sets ? finishSet : openFinishPrompt}
+                disabled={!!restTimer}
+              >
+                {currentSet < currentExercise.sets ? `Finalizar serie ${currentSet}/${currentExercise.sets}` : "Finalizar ejercicio"}
               </Button>
             </div>
           ) : (
@@ -726,9 +783,17 @@ export default function RegisterPage() {
       {restTimer ? (
         <div className="fixed inset-0 z-50 flex items-end bg-black/70 px-4 pb-4 pt-20 backdrop-blur-sm">
           <div className="mx-auto w-full max-w-[430px] rounded-3xl border border-border bg-background p-5 shadow-2xl">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Tiempo de descanso</div>
-            <div className="mt-1 text-xl font-bold">{restTimer.nextExerciseName}</div>
-            <div className="mt-2 text-sm text-muted-foreground">Empieza el siguiente ejercicio cuando termine este cronómetro.</div>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              {restTimer.kind === "set" ? "Descanso entre series" : "Tiempo de descanso"}
+            </div>
+            <div className="mt-1 text-xl font-bold">
+              {restTimer.kind === "set" ? `${restTimer.nextExerciseName} · Serie ${restTimer.nextSet}/${currentExercise?.sets ?? ""}` : restTimer.nextExerciseName}
+            </div>
+            <div className="mt-2 text-sm text-muted-foreground">
+              {restTimer.kind === "set"
+                ? "Prepárate para tu siguiente serie de este mismo ejercicio."
+                : "Empieza el siguiente ejercicio cuando termine este cronómetro."}
+            </div>
             <div className="mt-5 flex items-end justify-center rounded-[1.5rem] border border-border bg-surface-2 py-8">
               <div className="text-6xl font-black tracking-tight tabular-nums">{String(Math.max(0, restTimer.secondsLeft)).padStart(2, "0")}</div>
             </div>
@@ -737,7 +802,11 @@ export default function RegisterPage() {
                 variant="secondary"
                 className="flex-1"
                 onClick={() => {
-                  setActiveIndex(restTimer.nextIndex);
+                  if (restTimer.kind === "set") {
+                    setCurrentSet(restTimer.nextSet ?? 1);
+                  } else {
+                    setActiveIndex(restTimer.nextIndex);
+                  }
                   setRestTimer(null);
                 }}
               >
